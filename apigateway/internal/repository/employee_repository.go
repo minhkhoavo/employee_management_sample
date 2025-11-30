@@ -27,6 +27,17 @@ func (r *employeeRepository) Create(ctx context.Context, e *domain.Employee) err
 	return err
 }
 
+func (r *employeeRepository) Upsert(ctx context.Context, e *domain.Employee) error {
+	b := builder.NewSQLBuilder()
+	query, args := b.Insert("employees", "emp_no", "birth_date", "first_name", "last_name", "gender", "hire_date").
+		Values(e.EmpNo, e.BirthDate, e.FirstName, e.LastName, e.Gender, e.HireDate).
+		OnConflict("(emp_no) DO UPDATE SET birth_date = EXCLUDED.birth_date, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, gender = EXCLUDED.gender, hire_date = EXCLUDED.hire_date").
+		Build()
+
+	_, err := r.db.ExecContext(ctx, query, args...)
+	return err
+}
+
 func (r *employeeRepository) GetByID(ctx context.Context, id int) (*domain.Employee, error) {
 	b := builder.NewSQLBuilder()
 	query, args := b.Select("emp_no", "birth_date", "first_name", "last_name", "gender", "hire_date").

@@ -11,6 +11,7 @@ type EmployeeFilter struct {
 // EmployeeRepository defines the interface for employee data access
 type EmployeeRepository interface {
 	Create(ctx context.Context, e *Employee) error
+	Upsert(ctx context.Context, e *Employee) error
 	GetByID(ctx context.Context, id int) (*Employee, error)
 	Update(ctx context.Context, e *Employee) error
 	Delete(ctx context.Context, id int) error
