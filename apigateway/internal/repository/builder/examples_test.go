@@ -149,3 +149,20 @@ func Example_deleteWithWhereRaw() {
 	// SQL: DELETE FROM employees WHERE created_at < NOW() - INTERVAL '1 year'
 	// Number of args: 0
 }
+
+// Example8_Upsert demonstrates using OnConflict() for upsert operations
+func Example_upsert() {
+	// Upsert with composite primary key
+	qb := builder.NewSQLBuilder().
+		Insert("dept_emp", "emp_no", "dept_no", "from_date", "to_date").
+		Values(10001, "d005", "2023-01-01", "9999-01-01").
+		OnConflict("(emp_no, dept_no) DO UPDATE SET from_date = EXCLUDED.from_date, to_date = EXCLUDED.to_date")
+
+	sql, args := qb.Build()
+	fmt.Println("SQL:", sql)
+	fmt.Printf("Args: %v\n", args)
+
+	// Output:
+	// SQL: INSERT INTO dept_emp (emp_no, dept_no, from_date, to_date) VALUES ($1, $2, $3, $4) ON CONFLICT (emp_no, dept_no) DO UPDATE SET from_date = EXCLUDED.from_date, to_date = EXCLUDED.to_date
+	// Args: [10001 d005 2023-01-01 9999-01-01]
+}

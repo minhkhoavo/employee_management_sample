@@ -25,6 +25,9 @@ type SQLBuilder struct {
 	orConditions  []orCondition
 	whereGroups   []whereGroup
 	rawConditions []rawCondition
+	// New field for Upsert
+	onConflict     string
+	onConflictArgs []interface{}
 }
 
 // orCondition represents an OR condition
@@ -158,6 +161,13 @@ func (b *SQLBuilder) WhereRaw(sql string, args ...interface{}) *SQLBuilder {
 	return b
 }
 
+// OnConflict adds an ON CONFLICT clause to the query.
+func (b *SQLBuilder) OnConflict(clause string, args ...interface{}) *SQLBuilder {
+	b.onConflict = clause
+	b.onConflictArgs = args
+	return b
+}
+
 // BuildSafe constructs the final SQL string and arguments with safety validation.
 // Returns an error if the number of placeholders doesn't match the number of arguments.
 func (b *SQLBuilder) BuildSafe() (string, []interface{}, error) {
@@ -206,6 +216,13 @@ func (b *SQLBuilder) Build() (string, []interface{}) {
 		}
 		sb.WriteString(strings.Join(placeholders, ", "))
 		sb.WriteString(")")
+
+		if b.onConflict != "" {
+			sb.WriteString(" ON CONFLICT ")
+			sb.WriteString(b.onConflict)
+			b.args = append(b.args, b.onConflictArgs...)
+		}
+
 		return sb.String(), b.args
 	} else if b.isUpdate {
 		sb.WriteString("UPDATE ")

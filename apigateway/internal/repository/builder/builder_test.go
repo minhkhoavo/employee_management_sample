@@ -212,4 +212,20 @@ func TestSQLBuilderEnhancements(t *testing.T) {
 			t.Errorf("expected 0 args, got %d: %v", len(args), args)
 		}
 	})
+
+	t.Run("Upsert", func(t *testing.T) {
+		b := NewSQLBuilder()
+		query, args := b.Insert("employees", "emp_no", "first_name", "last_name").
+			Values(1001, "John", "Doe").
+			OnConflict("(emp_no) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name").
+			Build()
+
+		expected := "INSERT INTO employees (emp_no, first_name, last_name) VALUES ($1, $2, $3) ON CONFLICT (emp_no) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name"
+		if query != expected {
+			t.Errorf("expected %s, got %s", expected, query)
+		}
+		if len(args) != 3 || args[0] != 1001 || args[1] != "John" || args[2] != "Doe" {
+			t.Errorf("expected args [1001 John Doe], got %v", args)
+		}
+	})
 }
