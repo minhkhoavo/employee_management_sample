@@ -8,6 +8,13 @@ import (
 	"github.com/locvowork/employee_management_sample/apigateway/internal/repository/builder"
 )
 
+var (
+	employeeTable    = "employees.employee"
+	salaryTable      = "employees.salary"
+	deptEmpTable     = "employees.dept_emp"
+	deptManagerTable = "employees.dept_manager"
+)
+
 type employeeRepository struct {
 	db *sql.DB
 }
@@ -19,8 +26,8 @@ func NewEmployeeRepository(db *sql.DB) domain.EmployeeRepository {
 
 func (r *employeeRepository) Create(ctx context.Context, e *domain.Employee) error {
 	b := builder.NewSQLBuilder()
-	query, args := b.Insert("employees", "emp_no", "birth_date", "first_name", "last_name", "gender", "hire_date").
-		Values(e.EmpNo, e.BirthDate, e.FirstName, e.LastName, e.Gender, e.HireDate).
+	query, args := b.Insert(employeeTable, "id", "birth_date", "first_name", "last_name", "gender", "hire_date").
+		Values(e.ID, e.BirthDate, e.FirstName, e.LastName, e.Gender, e.HireDate).
 		Build()
 
 	_, err := r.db.ExecContext(ctx, query, args...)
@@ -29,9 +36,9 @@ func (r *employeeRepository) Create(ctx context.Context, e *domain.Employee) err
 
 func (r *employeeRepository) Upsert(ctx context.Context, e *domain.Employee) error {
 	b := builder.NewSQLBuilder()
-	query, args := b.Insert("employees", "emp_no", "birth_date", "first_name", "last_name", "gender", "hire_date").
-		Values(e.EmpNo, e.BirthDate, e.FirstName, e.LastName, e.Gender, e.HireDate).
-		OnConflict("(emp_no) DO UPDATE SET birth_date = EXCLUDED.birth_date, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, gender = EXCLUDED.gender, hire_date = EXCLUDED.hire_date").
+	query, args := b.Insert(employeeTable, "id", "birth_date", "first_name", "last_name", "gender", "hire_date").
+		Values(e.ID, e.BirthDate, e.FirstName, e.LastName, e.Gender, e.HireDate).
+		OnConflict("(id) DO UPDATE SET birth_date = EXCLUDED.birth_date, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, gender = EXCLUDED.gender, hire_date = EXCLUDED.hire_date").
 		Build()
 
 	_, err := r.db.ExecContext(ctx, query, args...)
@@ -40,14 +47,14 @@ func (r *employeeRepository) Upsert(ctx context.Context, e *domain.Employee) err
 
 func (r *employeeRepository) GetByID(ctx context.Context, id int) (*domain.Employee, error) {
 	b := builder.NewSQLBuilder()
-	query, args := b.Select("emp_no", "birth_date", "first_name", "last_name", "gender", "hire_date").
-		From("employees").
-		Where("emp_no = ?", id).
+	query, args := b.Select("id", "birth_date", "first_name", "last_name", "gender", "hire_date").
+		From(employeeTable).
+		Where("id = ?", id).
 		Build()
 
 	row := r.db.QueryRowContext(ctx, query, args...)
 	var e domain.Employee
-	if err := row.Scan(&e.EmpNo, &e.BirthDate, &e.FirstName, &e.LastName, &e.Gender, &e.HireDate); err != nil {
+	if err := row.Scan(&e.ID, &e.BirthDate, &e.FirstName, &e.LastName, &e.Gender, &e.HireDate); err != nil {
 		return nil, err
 	}
 	return &e, nil
@@ -55,11 +62,11 @@ func (r *employeeRepository) GetByID(ctx context.Context, id int) (*domain.Emplo
 
 func (r *employeeRepository) Update(ctx context.Context, e *domain.Employee) error {
 	b := builder.NewSQLBuilder()
-	query, args := b.Update("employees").
+	query, args := b.Update(employeeTable).
 		Set("first_name", e.FirstName).
 		Set("last_name", e.LastName).
 		Set("gender", e.Gender).
-		Where("emp_no = ?", e.EmpNo).
+		Where("id = ?", e.ID).
 		Build()
 
 	_, err := r.db.ExecContext(ctx, query, args...)
@@ -68,8 +75,8 @@ func (r *employeeRepository) Update(ctx context.Context, e *domain.Employee) err
 
 func (r *employeeRepository) Delete(ctx context.Context, id int) error {
 	b := builder.NewSQLBuilder()
-	query, args := b.Delete("employees").
-		Where("emp_no = ?", id).
+	query, args := b.Delete(employeeTable).
+		Where("id = ?", id).
 		Build()
 
 	_, err := r.db.ExecContext(ctx, query, args...)
@@ -78,9 +85,9 @@ func (r *employeeRepository) Delete(ctx context.Context, id int) error {
 
 func (r *employeeRepository) List(ctx context.Context, filter domain.EmployeeFilter) ([]domain.Employee, error) {
 	b := builder.NewSQLBuilder()
-	b.Select("emp_no", "birth_date", "first_name", "last_name", "gender", "hire_date").
-		From("employees").
-		OrderBy("emp_no ASC")
+	b.Select("id", "birth_date", "first_name", "last_name", "gender", "hire_date").
+		From(employeeTable).
+		OrderBy("id ASC")
 
 	if filter.Limit > 0 {
 		b.Limit(filter.Limit)
@@ -99,7 +106,7 @@ func (r *employeeRepository) List(ctx context.Context, filter domain.EmployeeFil
 	var employees []domain.Employee
 	for rows.Next() {
 		var e domain.Employee
-		if err := rows.Scan(&e.EmpNo, &e.BirthDate, &e.FirstName, &e.LastName, &e.Gender, &e.HireDate); err != nil {
+		if err := rows.Scan(&e.ID, &e.BirthDate, &e.FirstName, &e.LastName, &e.Gender, &e.HireDate); err != nil {
 			return nil, err
 		}
 		employees = append(employees, e)
@@ -110,14 +117,14 @@ func (r *employeeRepository) List(ctx context.Context, filter domain.EmployeeFil
 func (r *employeeRepository) GetCurrentSalary(ctx context.Context, empID int) (*domain.Salary, error) {
 	// Business logic: Current salary has to_date = '9999-01-01'
 	b := builder.NewSQLBuilder()
-	query, args := b.Select("emp_no", "salary", "from_date", "to_date").
-		From("salaries").
-		Where("emp_no = ? AND to_date = ?", empID, "9999-01-01").
+	query, args := b.Select("id", "salary", "from_date", "to_date").
+		From(salaryTable).
+		Where("employee_id = ? AND to_date = ?", empID, "9999-01-01").
 		Build()
 
 	row := r.db.QueryRowContext(ctx, query, args...)
 	var s domain.Salary
-	if err := row.Scan(&s.EmpNo, &s.Salary, &s.FromDate, &s.ToDate); err != nil {
+	if err := row.Scan(&s.EmployeeID, &s.Salary, &s.FromDate, &s.ToDate); err != nil {
 		return nil, err
 	}
 	return &s, nil
@@ -126,7 +133,7 @@ func (r *employeeRepository) GetCurrentSalary(ctx context.Context, empID int) (*
 func (r *employeeRepository) GetDepartmentHistory(ctx context.Context, empID int) ([]domain.DeptEmp, error) {
 	b := builder.NewSQLBuilder()
 	query, args := b.Select("emp_no", "dept_no", "from_date", "to_date").
-		From("dept_emp").
+		From(deptEmpTable).
 		Where("emp_no = ?", empID).
 		OrderBy("from_date DESC").
 		Build()
@@ -151,7 +158,7 @@ func (r *employeeRepository) GetDepartmentHistory(ctx context.Context, empID int
 func (r *employeeRepository) GetManagers(ctx context.Context, deptNo string) ([]domain.DeptManager, error) {
 	b := builder.NewSQLBuilder()
 	query, args := b.Select("dept_no", "emp_no", "from_date", "to_date").
-		From("dept_manager").
+		From(deptManagerTable).
 		Where("dept_no = ?", deptNo).
 		OrderBy("from_date DESC").
 		Build()

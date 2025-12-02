@@ -191,7 +191,7 @@ func (b *SQLBuilder) BuildSafe() (string, []interface{}, error) {
 	return sql, args, nil
 }
 
-// Build constructs the final SQL string and arguments.
+// Build constructs the final SQL string and arguments, ready for DB prepared statements
 func (b *SQLBuilder) Build() (string, []interface{}) {
 	var sb strings.Builder
 

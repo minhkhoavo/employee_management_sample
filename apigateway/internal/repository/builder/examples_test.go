@@ -166,3 +166,44 @@ func Example_upsert() {
 	// SQL: INSERT INTO dept_emp (emp_no, dept_no, from_date, to_date) VALUES ($1, $2, $3, $4) ON CONFLICT (emp_no, dept_no) DO UPDATE SET from_date = EXCLUDED.from_date, to_date = EXCLUDED.to_date
 	// Args: [10001 d005 2023-01-01 9999-01-01]
 }
+
+// Example9_PreparedStatementSelect demonstrates preparing a SELECT statement with placeholders.
+func Example_preparedStatementSelect() {
+	qb := builder.NewSQLBuilder().
+		Select("emp_no", "first_name", "last_name").
+		From("employees").
+		Where("dept_no = ? AND hire_date > ?", "d001", "2020-01-01")
+
+	query, args := qb.Build()
+
+	// In real code you would prepare the statement with a *sql.DB.
+	// Here we simply print the generated query and arguments.
+	fmt.Println("Prepared SELECT query:", query)
+	fmt.Printf("Args: %v\n", args)
+}
+
+// Example10_PreparedStatementInsert demonstrates preparing an INSERT statement with placeholders.
+func Example_preparedStatementInsert() {
+	qb := builder.NewSQLBuilder().
+		Insert("employees", "emp_no", "first_name", "last_name", "dept_no").
+		Values(10001, "John", "Doe", "d001")
+
+	query, args := qb.Build()
+
+	fmt.Println("Prepared INSERT query:", query)
+	fmt.Printf("Args: %v\n", args)
+}
+
+// Example11_PreparedStatementUpdate demonstrates preparing an UPDATE statement with placeholders.
+func Example_preparedStatementUpdate() {
+	qb := builder.NewSQLBuilder().
+		Update("employees").
+		Set("first_name", "Jane").
+		Set("last_name", "Smith").
+		Where("emp_no = ?", 10001)
+
+	query, args := qb.Build()
+
+	fmt.Println("Prepared UPDATE query:", query)
+	fmt.Printf("Args: %v\n", args)
+}

@@ -4,7 +4,7 @@ import "time"
 
 // Employee represents the employees table
 type Employee struct {
-	EmpNo     int       `json:"emp_no" db:"emp_no"`
+	ID        int       `json:"id" db:"id"`
 	BirthDate time.Time `json:"birth_date" db:"birth_date"`
 	FirstName string    `json:"first_name" db:"first_name"`
 	LastName  string    `json:"last_name" db:"last_name"`
@@ -36,10 +36,10 @@ type DeptManager struct {
 
 // Salary represents the salaries table
 type Salary struct {
-	EmpNo    int       `json:"emp_no" db:"emp_no"`
-	Salary   int       `json:"salary" db:"salary"`
-	FromDate time.Time `json:"from_date" db:"from_date"`
-	ToDate   time.Time `json:"to_date" db:"to_date"`
+	EmployeeID int       `json:"employee_id" db:"employee_id"`
+	Salary     int       `json:"salary" db:"salary"`
+	FromDate   time.Time `json:"from_date" db:"from_date"`
+	ToDate     time.Time `json:"to_date" db:"to_date"`
 }
 
 // Title represents the titles table
