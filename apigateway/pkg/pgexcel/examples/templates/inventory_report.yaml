@@ -1,0 +1,163 @@
+version: "1.0"
+name: "Inventory Report"
+description: "Stock management report with low-stock alerts"
+
+defaults:
+  header_style:
+    font:
+      name: "Arial"
+      size: 11
+      bold: true
+      color: "#FFFFFF"
+    fill:
+      color: "#5B9BD5"
+    alignment: "center"
+  data_style:
+    font:
+      name: "Arial"
+      size: 10
+
+sheets:
+  - name: "Inventory"
+    query: |
+      SELECT 
+        sku,
+        product_name,
+        category,
+        supplier,
+        unit_cost,
+        quantity_on_hand,
+        reorder_level,
+        quantity_on_hand - reorder_level as stock_buffer,
+        CASE 
+          WHEN quantity_on_hand = 0 THEN 'OUT_OF_STOCK'
+          WHEN quantity_on_hand <= reorder_level THEN 'LOW'
+          WHEN quantity_on_hand <= reorder_level * 2 THEN 'MEDIUM'
+          ELSE 'OK'
+        END as stock_status,
+        last_restock_date
+      FROM inventory
+      WHERE active = true
+      ORDER BY stock_status DESC, category, product_name
+    
+    columns:
+      - name: "sku"
+        header: "SKU"
+        width: 12
+        style:
+          font:
+            family: "Courier New"
+          alignment: "center"
+      
+      - name: "product_name"
+        header: "Product"
+        width: 30
+      
+      - name: "category"
+        header: "Category"
+        width: 15
+      
+      - name: "supplier"
+        header: "Supplier"
+        width: 20
+      
+      - name: "unit_cost"
+        header: "Unit Cost"
+        width: 12
+        format: "$#,##0.00"
+        style:
+          alignment: "right"
+      
+      - name: "quantity_on_hand"
+        header: "Qty On Hand"
+        width: 12
+        style:
+          alignment: "center"
+        conditional:
+          - condition: "== 0"
+            style:
+              fill:
+                color: "#FF0000"
+              font:
+                color: "#FFFFFF"
+                bold: true
+          - condition: "< 10"
+            style:
+              fill:
+                color: "#FFCCCC"
+      
+      - name: "reorder_level"
+        header: "Reorder At"
+        width: 12
+        style:
+          alignment: "center"
+      
+      - name: "stock_buffer"
+        header: "Buffer"
+        width: 10
+        style:
+          alignment: "center"
+        conditional:
+          - condition: "< 0"
+            style:
+              font:
+                color: "#FF0000"
+                bold: true
+          - condition: "== 0"
+            style:
+              font:
+                color: "#FF6600"
+      
+      - name: "stock_status"
+        header: "Status"
+        width: 15
+        style:
+          alignment: "center"
+        conditional:
+          - condition: "== 'OUT_OF_STOCK'"
+            style:
+              fill:
+                color: "#FF0000"
+              font:
+                color: "#FFFFFF"
+                bold: true
+          - condition: "== 'LOW'"
+            style:
+              fill:
+                color: "#FFC7CE"
+              font:
+                color: "#9C0006"
+          - condition: "== 'MEDIUM'"
+            style:
+              fill:
+                color: "#FFEB9C"
+              font:
+                color: "#9C5700"
+          - condition: "== 'OK'"
+            style:
+              fill:
+                color: "#C6EFCE"
+              font:
+                color: "#006100"
+      
+      - name: "last_restock_date"
+        header: "Last Restock"
+        width: 12
+        format: "2006-01-02"
+        style:
+          alignment: "center"
+    
+    layout:
+      freeze_rows: 1
+      freeze_cols: 2
+      auto_filter: true
+      max_column_width: 40
+    
+    protection:
+      password: "inventory2024"
+      lock_sheet: true
+      unlocked_columns:
+        - "quantity_on_hand"
+        - "reorder_level"
+      allow_filter: true
+      allow_sort: true

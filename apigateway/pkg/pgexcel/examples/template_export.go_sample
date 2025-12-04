@@ -1,0 +1,241 @@
+// Package main demonstrates using YAML templates for database exports.
+// This example shows how to define report layouts in YAML files,
+// similar to how XSLT works for XML transformations.
+//
+// Run: go run template_export.go_sample
+package main
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
+	"os"
+
+	_ "github.com/lib/pq"
+	"github.com/locvowork/employee_management_sample/apigateway/pkg/pgexcel"
+)
+
+func main() {
+	// Connect to database
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// Example 1: Load template from file
+	templateFromFileExample(ctx, db)
+
+	// Example 2: Inline YAML template
+	inlineTemplateExample(ctx, db)
+
+	// Example 3: Template with runtime variables
+	variableTemplateExample(ctx, db)
+}
+
+// templateFromFileExample loads a YAML template from file
+func templateFromFileExample(ctx context.Context, db *sql.DB) {
+	fmt.Println("Example 1: Template from file")
+
+	// Load template from YAML file
+	exporter, err := pgexcel.NewTemplateExporterFromFile(db, "templates/employee_report.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load template: %v", err)
+	}
+
+	// Set runtime variables
+	exporter.WithVariable("DEPARTMENT_ID", 1)
+
+	// Export
+	if err := exporter.ExportToFile(ctx, "template_file_output.xlsx"); err != nil {
+		log.Fatalf("Export failed: %v", err)
+	}
+
+	fmt.Println("  -> Created template_file_output.xlsx")
+}
+
+// inlineTemplateExample uses an inline YAML template
+func inlineTemplateExample(ctx context.Context, db *sql.DB) {
+	fmt.Println("Example 2: Inline YAML template")
+
+	yamlTemplate := `
+version: "1.0"
+name: "Quick Report"
+description: "A simple inline template example"
+
+defaults:
+  header_style:
+    font:
+      name: "Calibri"
+      size: 12
+      bold: true
+      color: "#FFFFFF"
+    fill:
+      color: "#2E75B6"
+    alignment: "center"
+  data_style:
+    font:
+      name: "Calibri"
+      size: 11
+
+sheets:
+  - name: "Products"
+    query: |
+      SELECT 
+        p.id,
+        p.name,
+        p.category,
+        p.price,
+        p.stock_quantity as stock,
+        CASE WHEN p.stock_quantity < 10 THEN 'LOW' ELSE 'OK' END as status
+      FROM products p
+      WHERE p.active = true
+      ORDER BY p.category, p.name
+    
+    columns:
+      - name: "id"
+        header: "Product ID"
+        width: 10
+        style:
+          alignment: "center"
+      
+      - name: "name"
+        header: "Product Name"
+        width: 30
+      
+      - name: "category"
+        header: "Category"
+        width: 15
+      
+      - name: "price"
+        header: "Unit Price"
+        width: 12
+        format: "$#,##0.00"
+        style:
+          alignment: "right"
+      
+      - name: "stock"
+        header: "Stock"
+        width: 10
+        style:
+          alignment: "center"
+        conditional:
+          - condition: "< 10"
+            style:
+              fill:
+                color: "#FFCCCC"
+              font:
+                color: "#CC0000"
+                bold: true
+          - condition: "> 100"
+            style:
+              fill:
+                color: "#CCFFCC"
+      
+      - name: "status"
+        header: "Status"
+        width: 10
+        conditional:
+          - condition: "== 'LOW'"
+            style:
+              font:
+                color: "#FF0000"
+                bold: true
+    
+    layout:
+      freeze_rows: 1
+      auto_filter: true
+      auto_fit_columns: true
+`
+
+	exporter, err := pgexcel.NewTemplateExporterFromString(db, yamlTemplate)
+	if err != nil {
+		log.Fatalf("Failed to parse template: %v", err)
+	}
+
+	if err := exporter.ExportToFile(ctx, "inline_template_output.xlsx"); err != nil {
+		log.Fatalf("Export failed: %v", err)
+	}
+
+	fmt.Println("  -> Created inline_template_output.xlsx")
+}
+
+// variableTemplateExample demonstrates using runtime variables
+func variableTemplateExample(ctx context.Context, db *sql.DB) {
+	fmt.Println("Example 3: Template with runtime variables")
+
+	yamlTemplate := `
+version: "1.0"
+name: "Department Report - ${DEPARTMENT_NAME}"
+
+variables:
+  # Default values - can be overridden at runtime
+  START_DATE: "2024-01-01"
+  END_DATE: "2024-12-31"
+  MIN_SALARY: "0"
+
+sheets:
+  - name: "${DEPARTMENT_NAME} Employees"
+    query: |
+      SELECT 
+        e.id,
+        e.name,
+        e.email,
+        e.salary,
+        e.hire_date
+      FROM employees e
+      WHERE e.department_id = $1
+        AND e.hire_date BETWEEN $2 AND $3
+        AND e.salary >= $4
+      ORDER BY e.name
+    query_args:
+      - "${DEPARTMENT_ID}"
+      - "${START_DATE}"
+      - "${END_DATE}"
+      - "${MIN_SALARY}"
+    
+    columns:
+      - name: "id"
+        header: "ID"
+        width: 8
+      - name: "name"
+        header: "Employee Name"
+        width: 25
+      - name: "email"
+        header: "Email"
+        width: 30
+      - name: "salary"
+        header: "Salary"
+        width: 15
+        format: "$#,##0.00"
+      - name: "hire_date"
+        header: "Hire Date"
+        width: 12
+    
+    layout:
+      freeze_rows: 1
+      auto_filter: true
+`
+
+	exporter, err := pgexcel.NewTemplateExporterFromString(db, yamlTemplate)
+	if err != nil {
+		log.Fatalf("Failed to parse template: %v", err)
+	}
+
+	// Override template variables at runtime
+	exporter.
+		WithVariable("DEPARTMENT_ID", 1).
+		WithVariable("DEPARTMENT_NAME", "Engineering").
+		WithVariable("START_DATE", "2023-01-01").
+		WithVariable("END_DATE", "2024-12-31").
+		WithVariable("MIN_SALARY", 50000)
+
+	if err := exporter.ExportToFile(ctx, "variable_template_output.xlsx"); err != nil {
+		log.Fatalf("Export failed: %v", err)
+	}
+
+	fmt.Println("  -> Created variable_template_output.xlsx")
+}

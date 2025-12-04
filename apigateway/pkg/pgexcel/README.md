@@ -49,8 +49,47 @@ func main() {
     exporter.ExportToFile(context.Background(), "employees.xlsx",
         pgexcel.WithAutoFilter(),
         pgexcel.WithFreezePanes(),
-    )
+```
+
+### Export Go Data (No Database Required)
+
+```go
+type Employee struct {
+    ID     int     `excel:"header:Employee ID,width:10"`
+    Name   string  `excel:"header:Full Name,width:25"`
+    Salary float64 `excel:"header:Salary,format:$#,##0.00"`
+    Hidden string  `excel:"-"` // Skip this field
 }
+
+employees := []Employee{
+    {ID: 1, Name: "Alice", Salary: 75000},
+    {ID: 2, Name: "Bob", Salary: 85000},
+}
+
+exporter := pgexcel.NewDataExporter().
+    WithData("Employees", employees)
+
+exporter.ExportToFile(ctx, "employees.xlsx")
+```
+
+### Export with YAML Template (Data Mode)
+
+```go
+// Load template and use with in-memory data
+exporter, _ := pgexcel.NewDataExporterFromTemplateFile("template.yaml")
+exporter.WithData("Employees", employees)
+exporter.ExportToFile(ctx, "report.xlsx")
+```
+
+### Export Multiple Data Sources
+
+```go
+exporter := pgexcel.NewDataExporter().
+    WithData("Employees", employees).
+    WithData("Departments", departments).
+    WithData("Summary", summaryData)
+
+exporter.ExportToFile(ctx, "report.xlsx")
 ```
 
 ### Export with Editable Columns
@@ -334,6 +373,119 @@ exporter.ExportToFile(ctx, "financial.xlsx",
 - `PercentageStyle()` - Percentage formatting
 - `DateStyle(format)` - Date formatting
 
+## YAML Template System
+
+The YAML Template System provides an XSLT-like capability for defining Excel report layouts dynamically via YAML configuration files.
+
+### Quick Start with Templates
+
+```go
+// Load template from file
+exporter, err := pgexcel.NewTemplateExporterFromFile(db, "templates/report.yaml")
+if err != nil {
+    log.Fatal(err)
+}
+
+// Set runtime variables
+exporter.WithVariable("DEPARTMENT_ID", 1).
+    WithVariable("REPORT_DATE", "2024-01-01")
+
+// Export
+err = exporter.ExportToFile(ctx, "report.xlsx")
+```
+
+### Template Structure
+
+```yaml
+version: "1.0"
+name: "My Report"
+description: "Report description"
+
+defaults:
+  header_style:
+    font:
+      name: "Arial"
+      size: 11
+      bold: true
+      color: "#FFFFFF"
+    fill:
+      color: "#4472C4"
+  data_style:
+    font:
+      name: "Arial"
+      size: 10
+
+variables:
+  DEPARTMENT_ID: "1"
+
+sheets:
+  - name: "Employees"
+    query: |
+      SELECT id, name, salary, status 
+      FROM employees WHERE department_id = $1
+    query_args:
+      - "${DEPARTMENT_ID}"
+    
+    columns:
+      - name: "id"
+        header: "ID"
+        width: 8
+      - name: "salary"
+        format: "$#,##0.00"
+        conditional:
+          - condition: "> 100000"
+            style:
+              fill:
+                color: "#FFE699"
+      - name: "status"
+        conditional:
+          - condition: "== 'ACTIVE'"
+            style:
+              font:
+                color: "#008000"
+    
+    layout:
+      freeze_rows: 1
+      auto_filter: true
+    
+    protection:
+      password: "secret"
+      lock_sheet: true
+      unlocked_columns: ["status"]
+      allow_filter: true
+```
+
+### Conditional Formatting
+
+Support for simple expressions:
+- **Numeric**: `> 100`, `< 50`, `>= 100`, `<= 100`, `== 100`, `!= 100`
+- **String**: `== 'ACTIVE'`, `!= 'INACTIVE'`
+- **Contains**: `contains 'error'`
+
+### Template API
+
+```go
+// Load from file
+exporter, _ := pgexcel.NewTemplateExporterFromFile(db, "report.yaml")
+
+// Load from string
+exporter, _ := pgexcel.NewTemplateExporterFromString(db, yamlContent)
+
+// Load programmatically
+template, _ := pgexcel.LoadTemplate("report.yaml")
+exporter := pgexcel.NewTemplateExporter(db, template)
+
+// Set variables
+exporter.WithVariables(map[string]interface{}{
+    "DEPT": 1,
+    "DATE": "2024-01-01",
+})
+
+// Export
+exporter.Export(ctx, writer)
+exporter.ExportToFile(ctx, "output.xlsx")
+```
+
 ## Best Practices
 
 1. **Always use passwords** for protected sheets in production
@@ -343,7 +495,9 @@ exporter.ExportToFile(ctx, "financial.xlsx",
 5. **Test protection** by trying to edit locked cells in Excel
 6. **Use transactions** for consistency when exporting multiple related queries
 7. **Handle context cancellation** for long-running exports
+8. **Use YAML templates** for reports with complex/dynamic layouts
 
 ## License
 
 This library is part of the employee_management_sample project.
+
