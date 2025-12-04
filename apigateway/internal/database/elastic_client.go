@@ -140,9 +140,9 @@ func (es *ElasticSearchClient) ScrollAllEmployees(ctx context.Context) ([]Employ
 
 	// Step 1: Initialize scroll
 	scroll := es.client.Scroll("employees").
-		Size(1000).      // Fetch 1000 docs per batch
-		KeepAlive("2m"). // Scroll context lives for 2 minutes
-		Sort("_doc")     // Most efficient sort for scrolling
+		Size(1000).        // Fetch 1000 docs per batch
+		KeepAlive("2m").   // Scroll context lives for 2 minutes
+		Sort("_doc", true) // Most efficient sort for scrolling
 
 	for {
 		// Step 2: Fetch next batch

@@ -5,42 +5,16 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/locvowork/employee_management_sample/apigateway/internal/config"
-	"github.com/locvowork/employee_management_sample/apigateway/internal/database"
-	"github.com/locvowork/employee_management_sample/apigateway/internal/logger"
-	"github.com/locvowork/employee_management_sample/apigateway/internal/repository/builder"
-	"github.com/locvowork/employee_management_sample/apigateway/pkg/pgexcel"
+	"employee_management_sample/pkg/pgexcel"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
-	ctx := context.Background()
-
-	// Load environment configuration
-	if err := config.LoadEnvConfig(); err != nil {
-		panic(err)
-	}
-
-	// Initialize logging
-	logger.InitLogging(config.DefaultEnvConfig.LOG_FILE_PATH)
-	logger.InfoLog(ctx, "Environment variables loaded successfully")
-
-	// Initialize database connection
-	dbConfig := database.Config{
-		Host:            config.DefaultEnvConfig.DB_HOST,
-		Port:            config.DefaultEnvConfig.DB_PORT,
-		User:            config.DefaultEnvConfig.DB_USER,
-		Password:        config.DefaultEnvConfig.DB_PASSWORD,
-		DBName:          config.DefaultEnvConfig.DB_NAME,
-		SSLMode:         config.DefaultEnvConfig.DB_SSL_MODE,
-		MaxOpenConns:    config.DefaultEnvConfig.DB_MAX_OPEN_CONNS,
-		MaxIdleConns:    config.DefaultEnvConfig.DB_MAX_IDLE_CONNS,
-		ConnMaxLifetime: config.DefaultEnvConfig.DB_CONN_MAX_LIFETIME,
-	}
-
-	db, err := database.NewPostgresDB(ctx, dbConfig)
+	// Connect to PostgreSQL
+	db, err := sql.Open("postgres", "postgres://user:password@localhost:5432/mydb?sslmode=disable")
 	if err != nil {
-		logger.ErrorLog(ctx, "Failed to initialize database: %v", err)
-		panic(err)
+		log.Fatal(err)
 	}
 	defer db.Close()
 
@@ -54,16 +28,18 @@ func main() {
 // basicExport demonstrates a simple export with all cells locked
 func basicExport(db *sql.DB) {
 	ctx := context.Background()
-	queryColumns := `id,
-			first_name,
-			last_name,			
-			gender,
-			birth_date,
-			hire_date`
-	qb := builder.NewSQLBuilder()
-	query, _ := qb.Select(queryColumns).
-		From("employees.employee").
-		OrderBy("id").Build()
+
+	query := `
+		SELECT 
+			id,
+			name,
+			email,
+			department,
+			salary,
+			hire_date
+		FROM employees
+		ORDER BY id
+	`
 
 	exporter := pgexcel.NewExporter(db).
 		WithQuery(query).
@@ -88,16 +64,18 @@ func basicExport(db *sql.DB) {
 // editableColumnsExport demonstrates allowing editing of specific columns
 func editableColumnsExport(db *sql.DB) {
 	ctx := context.Background()
-	queryColumns := `id,
-			first_name,
-			last_name,			
-			gender,
-			birth_date,
-			hire_date`
-	qb := builder.NewSQLBuilder()
-	query, _ := qb.Select(queryColumns).
-		From("employees.employee").
-		OrderBy("id").Build()
+
+	query := `
+		SELECT 
+			id,
+			name,
+			email,
+			department,
+			status,
+			comments
+		FROM employees
+		ORDER BY id
+	`
 
 	// Lock all except Status (column E) and Comments (column F)
 	exporter := pgexcel.NewExporter(db).

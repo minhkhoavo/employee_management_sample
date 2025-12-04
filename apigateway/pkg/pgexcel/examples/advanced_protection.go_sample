@@ -1,0 +1,209 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"log"
+
+	"employee_management_sample/pkg/pgexcel"
+
+	_ "github.com/lib/pq"
+)
+
+func main() {
+	// Connect to PostgreSQL
+	db, err := sql.Open("postgres", "postgres://user:password@localhost:5432/mydb?sslmode=disable")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// Advanced protection scenarios
+	complexProtectionRules(db)
+	conditionalProtection(db)
+	multiLayerProtection(db)
+}
+
+// complexProtectionRules demonstrates complex protection with multiple rules
+func complexProtectionRules(db *sql.DB) {
+	ctx := context.Background()
+
+	query := `
+		SELECT 
+			id,
+			employee_code,
+			name,
+			base_salary,
+			bonus,
+			total_compensation,
+			approval_status,
+			reviewer_notes
+		FROM payroll
+		ORDER BY id
+	`
+
+	// Complex scenario:
+	// - Lock header row
+	// - Lock ID and employee code columns (A, B)
+	// - Lock calculated total (F)
+	// - Allow editing base salary, bonus (D, E)
+	// - Allow editing reviewer notes (H)
+	// - Lock approval status until approved
+
+	protection := pgexcel.NewSheetProtection()
+	protection.Password = "payroll2024"
+
+	// Apply multiple combined rules
+	rules := pgexcel.CombineRules(
+		pgexcel.LockRowsAbove(1),                     // Lock header
+		pgexcel.LockColumns("A", "B", "C", "F", "G"), // Lock specific columns
+		pgexcel.UnlockRange("D2:E1000"),              // Allow editing base salary and bonus
+		pgexcel.UnlockRange("H2:H1000"),              // Allow reviewer notes
+	)
+
+	if err := rules.Apply(protection); err != nil {
+		log.Fatalf("Failed to apply rules: %v", err)
+	}
+
+	exporter := pgexcel.NewExporter(db).
+		WithQuery(query).
+		WithSheetName("Payroll").
+		WithHeaders(true)
+
+	exporter.config.Protection = protection
+
+	err := exporter.ExportToFile(ctx, "payroll_complex.xlsx",
+		pgexcel.WithAutoFilter(),
+		pgexcel.WithFreezePanes(),
+		pgexcel.WithAutoFitColumns(),
+		pgexcel.WithHeaderStyle(pgexcel.HeaderStyleDark()),
+		pgexcel.WithColumnStyle("base_salary", pgexcel.CurrencyStyle("$")),
+		pgexcel.WithColumnStyle("bonus", pgexcel.CurrencyStyle("$")),
+		pgexcel.WithColumnStyle("total_compensation", pgexcel.CurrencyStyle("$")),
+	)
+
+	if err != nil {
+		log.Fatalf("Export failed: %v", err)
+	}
+
+	log.Println("Complex protection export completed: payroll_complex.xlsx")
+	log.Println("Editable: Base Salary (D), Bonus (E), Reviewer Notes (H)")
+	log.Println("Password: payroll2024")
+}
+
+// conditionalProtection demonstrates conditional row locking
+func conditionalProtection(db *sql.DB) {
+	ctx := context.Background()
+
+	query := `
+		SELECT 
+			id,
+			name,
+			role,
+			status,
+			edit_allowed
+		FROM employees
+		ORDER BY id
+	`
+
+	// Lock rows where role is ADMIN or status is ARCHIVED
+	lockAdminRows := pgexcel.LockRowsWhere(func(rowNum int, rowData []interface{}) bool {
+		if rowNum == 1 {
+			return true // Always lock header
+		}
+
+		role := rowData[2].(string)
+		status := rowData[3].(string)
+
+		return role == "ADMIN" || status == "ARCHIVED"
+	})
+
+	exporter := pgexcel.NewExporter(db).
+		WithQuery(query).
+		WithSheetName("Employees").
+		WithHeaders(true).
+		WithProtection(lockAdminRows).
+		WithPassword("secure456")
+
+	err := exporter.ExportToFile(ctx, "employees_conditional.xlsx",
+		pgexcel.WithAutoFilter(),
+		pgexcel.WithAutoFitColumns(),
+	)
+
+	if err != nil {
+		log.Fatalf("Export failed: %v", err)
+	}
+
+	log.Println("Conditional protection export completed: employees_conditional.xlsx")
+	log.Println("Admin and archived rows are locked")
+}
+
+// multiLayerProtection demonstrates layered protection with different access levels
+func multiLayerProtection(db *sql.DB) {
+	ctx := context.Background()
+
+	query := `
+		SELECT 
+			quarter,
+			region,
+			revenue,
+			expenses,
+			profit,
+			forecast,
+			actual_variance,
+			notes
+		FROM financial_report
+		ORDER BY quarter, region
+	`
+
+	// Multi-layer approach:
+	// 1. Lock everything by default
+	// 2. Unlock forecast column for planning team
+	// 3. Keep actuals locked
+	// 4. Allow notes for everyone
+
+	protection := pgexcel.NewSheetProtection()
+	protection.Password = "finance2024"
+	protection.AllowFilter = true
+	protection.AllowSort = true
+
+	rules := []pgexcel.ProtectionRule{
+		pgexcel.LockAllExcept(
+			pgexcel.Columns("F", "H"), // Forecast and Notes
+		),
+	}
+
+	for _, rule := range rules {
+		if err := rule.Apply(protection); err != nil {
+			log.Fatalf("Failed to apply protection: %v", err)
+		}
+	}
+
+	exporter := pgexcel.NewExporter(db).
+		WithQuery(query).
+		WithSheetName("Q4 Financial Report").
+		WithHeaders(true)
+
+	exporter.config.Protection = protection
+
+	err := exporter.ExportToFile(ctx, "financial_multilayer.xlsx",
+		pgexcel.WithAutoFilter(),
+		pgexcel.WithFreezePanes(),
+		pgexcel.WithAutoFitColumns(),
+		pgexcel.WithMaxColumnWidth(30),
+		pgexcel.WithHeaderStyle(pgexcel.HeaderStyleGreen()),
+		pgexcel.WithColumnStyle("revenue", pgexcel.CurrencyStyle("$")),
+		pgexcel.WithColumnStyle("expenses", pgexcel.CurrencyStyle("$")),
+		pgexcel.WithColumnStyle("profit", pgexcel.CurrencyStyle("$")),
+		pgexcel.WithColumnStyle("forecast", pgexcel.CurrencyStyle("$")),
+		pgexcel.WithColumnStyle("actual_variance", pgexcel.PercentageStyle()),
+	)
+
+	if err != nil {
+		log.Fatalf("Export failed: %v", err)
+	}
+
+	log.Println("Multi-layer protection export completed: financial_multilayer.xlsx")
+	log.Println("Editable: Forecast (F), Notes (H)")
+	log.Println("Password: finance2024")
+}
