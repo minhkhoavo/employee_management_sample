@@ -279,3 +279,239 @@ func TestEvaluateConditionDataExporter(t *testing.T) {
 		})
 	}
 }
+
+func TestDataExporterWithStackedSections(t *testing.T) {
+	// Section 1: Employees (locked)
+	type Employee struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+
+	// Section 2: Notes (editable, different structure)
+	type Note struct {
+		Text     string `json:"text"`
+		Priority string `json:"priority"`
+	}
+
+	employees := []Employee{
+		{ID: 1, Name: "Alice"},
+		{ID: 2, Name: "Bob"},
+	}
+
+	notes := []Note{
+		{Text: "Task A", Priority: "High"},
+		{Text: "Task B", Priority: "Low"},
+	}
+
+	exporter := NewDataExporter().
+		AddSheet("Report").
+		AddSection(&SectionConfig{
+			Title:  "Employees (Read-Only)",
+			Data:   employees,
+			Locked: true,
+			TitleStyle: &StyleTemplate{
+				Font: &FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &FillTemplate{Color: "#2E7D32"},
+			},
+			HeaderStyle: &StyleTemplate{
+				Font: &FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &FillTemplate{Color: "#4CAF50"},
+			},
+			GapAfter: 2,
+		}).
+		AddSection(&SectionConfig{
+			Title:  "Notes (Editable)",
+			Data:   notes,
+			Locked: false,
+			TitleStyle: &StyleTemplate{
+				Font: &FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &FillTemplate{Color: "#1565C0"},
+			},
+			HeaderStyle: &StyleTemplate{
+				Font: &FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &FillTemplate{Color: "#1976D2"},
+			},
+		}).
+		Build()
+
+	var buf bytes.Buffer
+	err := exporter.Export(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Export with sections failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("Expected non-empty output")
+	}
+}
+
+func TestDataExporterWithSectionColumnOverrides(t *testing.T) {
+	type Item struct {
+		Code  string
+		Name  string
+		Value float64
+	}
+
+	items := []Item{
+		{Code: "A001", Name: "Item A", Value: 100.50},
+		{Code: "B002", Name: "Item B", Value: 200.75},
+	}
+
+	exporter := NewDataExporter().
+		AddSheet("Items").
+		AddSection(&SectionConfig{
+			Title: "Inventory",
+			Data:  items,
+			Columns: []ColumnConfig{
+				{FieldName: "Code", Header: "Item Code", Width: 15},
+				{FieldName: "Name", Header: "Description", Width: 30},
+				{FieldName: "Value", Header: "Unit Price ($)", Width: 20},
+			},
+		}).
+		Build()
+
+	var buf bytes.Buffer
+	err := exporter.Export(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Export with column overrides failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("Expected non-empty output")
+	}
+}
+
+func TestDataExporterWithHorizontalSections(t *testing.T) {
+	type Revenue struct {
+		Month  string
+		Amount float64
+	}
+
+	type Expenses struct {
+		Category string
+		Value    float64
+	}
+
+	revenue := []Revenue{
+		{Month: "Jan", Amount: 10000},
+		{Month: "Feb", Amount: 12000},
+	}
+
+	expenses := []Expenses{
+		{Category: "Rent", Value: 2000},
+		{Category: "Salaries", Value: 5000},
+	}
+
+	exporter := NewDataExporter().
+		AddSheet("Dashboard").
+		AddSection(&SectionConfig{
+			Title:     "Revenue",
+			Data:      revenue,
+			Direction: "horizontal",
+			GapAfter:  1,
+		}).
+		AddSection(&SectionConfig{
+			Title:     "Expenses",
+			Data:      expenses,
+			Direction: "horizontal",
+		}).
+		Build()
+
+	var buf bytes.Buffer
+	err := exporter.Export(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Export with horizontal sections failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("Expected non-empty output")
+	}
+}
+
+func TestDataExporterWithYamlSections(t *testing.T) {
+	type Employee struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+
+	type Manager struct {
+		ID   int    `json:"id"`
+		Role string `json:"role"`
+	}
+
+	employees := []Employee{
+		{ID: 1, Name: "Alice", Status: "Active"},
+		{ID: 2, Name: "Bob", Status: "Inactive"},
+	}
+
+	managers := []Manager{
+		{ID: 1, Role: "Team Lead"},
+		{ID: 2, Role: "Director"},
+	}
+
+	yamlConfig := `
+version: "1.0"
+name: "Test Report"
+sheets:
+  - name: "Dashboard"
+    sections:
+      - id: "emp_section"
+        title: "Employees"
+        locked: false
+        direction: "horizontal"
+        gap_after: 1
+        header_style:
+          font:
+            bold: true
+            color: "#FFFFFF"
+          fill:
+            color: "#1976D2"
+        columns:
+          - field_name: "ID"
+            header: "Employee ID"
+            width: 15
+          - field_name: "Name"
+            header: "Full Name"
+            width: 25
+          - field_name: "Status"
+            header: "Status"
+            width: 15
+
+      - id: "mgr_section"
+        title: "Managers"
+        locked: true
+        direction: "horizontal"
+        header_style:
+          font:
+            bold: true
+          fill:
+            color: "#4CAF50"
+        columns:
+          - field_name: "ID"
+            header: "Manager ID"
+            width: 15
+          - field_name: "Role"
+            header: "Role Title"
+            width: 25
+`
+
+	exporter, err := NewDataExporterFromYaml(yamlConfig)
+	if err != nil {
+		t.Fatalf("Failed to create exporter from YAML: %v", err)
+	}
+
+	exporter.
+		BindSectionData("emp_section", employees).
+		BindSectionData("mgr_section", managers)
+
+	var buf bytes.Buffer
+	err = exporter.Export(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Export with YAML sections failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("Expected non-empty output")
+	}
+}

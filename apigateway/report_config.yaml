@@ -1,0 +1,81 @@
+version: "1.0"
+name: "Employee Report"
+description: "Example multi-section report using YAML configuration"
+
+sheets:
+  - name: "Report"
+    sections:
+      - id: "employees"
+        title: "Employees (Editable)"
+        locked: false
+        show_header: true
+        # direction: "horizontal"
+        gap_after: 0
+        title_style:
+          font:
+            bold: true
+            color: "#FFFFFF"
+          fill:
+            color: "#1565C0"
+        header_style:
+          font:
+            bold: true
+            color: "#FFFFFF"
+          fill:
+            color: "#1976D2"
+        columns:
+          - field_name: "ID"
+            header: "Employee ID"
+            width: 12
+          - field_name: "FirstName"
+            header: "First Name"
+            width: 20
+          - field_name: "LastName"
+            header: "Last Name"
+            width: 20
+          - field_name: "BirthDate"
+            header: "Birth Date"
+            width: 15            
+          - field_name: "HireDate"
+            header: "Hire Date"
+            width: 15
+          - field_name: "Gender"
+            header: "Gender"
+            width: 10
+
+      - id: "managers"
+        title: "Manager Employees (Read-Only)"
+        locked: true
+        show_header: true
+        direction: "horizontal"
+        title_style:
+          font:
+            bold: true
+            color: "#FFFFFF"
+          fill:
+            color: "#2E7D32"
+        header_style:
+          font:
+            bold: true
+            color: "#FFFFFF"
+          fill:
+            color: "#4CAF50"
+        columns:
+          - field_name: "ID"
+            header: "Manager ID"
+            width: 12
+          - field_name: "FirstName"
+            header: "First Name"
+            width: 20
+          - field_name: "LastName"
+            header: "Last Name"
+            width: 20
+          - field_name: "BirthDate"
+            header: "Birth Date"
+            width: 15
+          - field_name: "HireDate"
+            header: "Hire Date"
+            width: 15
+          - field_name: "Gender"
+            header: "Gender"
+            width: 10
