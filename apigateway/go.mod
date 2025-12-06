@@ -10,6 +10,7 @@ require (
 	github.com/olivere/elastic/v7 v7.0.32
 	github.com/rs/zerolog v1.30.0
 	github.com/xuri/excelize/v2 v2.10.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -27,5 +28,4 @@ require (
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

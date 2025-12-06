@@ -10,7 +10,7 @@ import (
 	"github.com/locvowork/employee_management_sample/apigateway/internal/database"
 	"github.com/locvowork/employee_management_sample/apigateway/internal/domain"
 	"github.com/locvowork/employee_management_sample/apigateway/internal/logger"
-	"github.com/locvowork/employee_management_sample/apigateway/pkg/pgexcel"
+	"github.com/locvowork/employee_management_sample/apigateway/pkg/simpleexcel"
 )
 
 func main() {
@@ -140,24 +140,24 @@ func programmaticExport(ctx context.Context) {
 		})
 	}
 
-	err := pgexcel.NewDataExporter().
+	err := simpleexcel.NewDataExporter().
 		AddSheet("Report").
-		AddSection(&pgexcel.SectionConfig{
+		AddSection(&simpleexcel.SectionConfig{
 			ID:         "employees",
 			Title:      "Employees (Editable)",
 			Data:       excelExportExmployees,
 			Locked:     false,
 			ShowHeader: true,
-			Direction:  pgexcel.SectionDirectionHorizontal,
-			TitleStyle: &pgexcel.StyleTemplate{
-				Font: &pgexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
-				Fill: &pgexcel.FillTemplate{Color: "#1565C0"},
+			Direction:  simpleexcel.SectionDirectionHorizontal,
+			TitleStyle: &simpleexcel.StyleTemplate{
+				Font: &simpleexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &simpleexcel.FillTemplate{Color: "#1565C0"},
 			},
-			HeaderStyle: &pgexcel.StyleTemplate{
-				Font: &pgexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
-				Fill: &pgexcel.FillTemplate{Color: "#1976D2"},
+			HeaderStyle: &simpleexcel.StyleTemplate{
+				Font: &simpleexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &simpleexcel.FillTemplate{Color: "#1976D2"},
 			},
-			Columns: []pgexcel.ColumnConfig{
+			Columns: []simpleexcel.ColumnConfig{
 				{FieldName: "ID", Header: "Test Employee ID", Width: 12},
 				{FieldName: "FirstName", Header: "Test First Name", Width: 20},
 				{FieldName: "LastName", Header: "Test Last Name", Width: 20},
@@ -166,22 +166,22 @@ func programmaticExport(ctx context.Context) {
 				{FieldName: "Gender", Header: "Test Gender", Width: 10},
 			},
 		}).
-		AddSection(&pgexcel.SectionConfig{
+		AddSection(&simpleexcel.SectionConfig{
 			ID:         "level2_employees",
 			Title:      "Level 2 Employees (Read-Only)",
 			Data:       excelExportLevel2Employees,
 			Locked:     true,
 			ShowHeader: true,
-			Direction:  pgexcel.SectionDirectionHorizontal,
-			TitleStyle: &pgexcel.StyleTemplate{
-				Font: &pgexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
-				Fill: &pgexcel.FillTemplate{Color: "#2E7D32"},
+			Direction:  simpleexcel.SectionDirectionHorizontal,
+			TitleStyle: &simpleexcel.StyleTemplate{
+				Font: &simpleexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &simpleexcel.FillTemplate{Color: "#2E7D32"},
 			},
-			HeaderStyle: &pgexcel.StyleTemplate{
-				Font: &pgexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
-				Fill: &pgexcel.FillTemplate{Color: "#4CAF50"},
+			HeaderStyle: &simpleexcel.StyleTemplate{
+				Font: &simpleexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &simpleexcel.FillTemplate{Color: "#4CAF50"},
 			},
-			Columns: []pgexcel.ColumnConfig{
+			Columns: []simpleexcel.ColumnConfig{
 				{FieldName: "ID", Header: "Employee ID", Width: 12},
 				{FieldName: "FirstName", Header: "First Name", Width: 20},
 				{FieldName: "LastName", Header: "Last Name", Width: 20},
@@ -190,30 +190,30 @@ func programmaticExport(ctx context.Context) {
 				{FieldName: "Gender", Header: "Gender", Width: 10},
 			},
 		}).
-		AddSection(&pgexcel.SectionConfig{
+		AddSection(&simpleexcel.SectionConfig{
 			ID:         "dept_managers",
 			Title:      "Manager Employees (Read-Only)",
 			Data:       excelExportDeptManagers,
 			Locked:     true,
 			ShowHeader: true,
-			Position:   "G10",
-			Direction:  pgexcel.SectionDirectionHorizontal,
-			TitleStyle: &pgexcel.StyleTemplate{
-				Font: &pgexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
-				Fill: &pgexcel.FillTemplate{Color: "#c07015ff"},
+			// Position:   "G10",
+			Direction: simpleexcel.SectionDirectionHorizontal,
+			TitleStyle: &simpleexcel.StyleTemplate{
+				Font: &simpleexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &simpleexcel.FillTemplate{Color: "#c07015ff"},
 			},
-			HeaderStyle: &pgexcel.StyleTemplate{
-				Font: &pgexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
-				Fill: &pgexcel.FillTemplate{Color: "#c07015ff"},
+			HeaderStyle: &simpleexcel.StyleTemplate{
+				Font: &simpleexcel.FontTemplate{Bold: true, Color: "#FFFFFF"},
+				Fill: &simpleexcel.FillTemplate{Color: "#c07015ff"},
 			},
-			Columns: []pgexcel.ColumnConfig{
+			Columns: []simpleexcel.ColumnConfig{
 				{FieldName: "ID", Header: "Manager ID", Width: 12},
 				{FieldName: "DeptNo", Header: "Department Number", Width: 20},
 				{FieldName: "FromDate", Header: "From Date", Width: 20},
 				{FieldName: "ToDate", Header: "To Date", Width: 15},
 			},
 		}).
-		Build().ExportToFile(ctx, "programmatic_export_output.xlsx")
+		Build().ExportToExcel(ctx, "programmatic_export_output.xlsx")
 
 	if err != nil {
 		log.Fatalf("Programmatic export failed: %v", err)
@@ -270,7 +270,7 @@ func yamlConfigExport(ctx context.Context) {
 	}
 
 	// Load configuration from YAML file and bind data at runtime
-	exporter, err := pgexcel.NewDataExporterFromYamlFile("report_config.yaml")
+	exporter, err := simpleexcel.NewDataExporterFromYamlFile("report_config.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load YAML config: %v", err)
 	}
@@ -278,7 +278,7 @@ func yamlConfigExport(ctx context.Context) {
 	err = exporter.
 		BindSectionData("employees", excelExportEmployees).
 		BindSectionData("managers", excelExportManagerEmployees).
-		ExportToFile(ctx, "yaml_config_export_output.xlsx")
+		ExportToExcel(ctx, "yaml_config_export_output.xlsx")
 
 	if err != nil {
 		log.Fatalf("YAML config export failed: %v", err)
