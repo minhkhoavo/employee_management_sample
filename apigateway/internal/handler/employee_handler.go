@@ -352,3 +352,35 @@ func (h *EmployeeHandler) ExportDynamicHandler(c echo.Context) error {
 
 	return exporter.StreamToResponse(c.Response().Writer, "dynamic_products.xlsx")
 }
+
+func (h *EmployeeHandler) ExportDynamicYamlHandler(c echo.Context) error {
+	exporter, err := simpleexcel.NewDataExporterFromYamlFile("dynamic_report_config.yaml")
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to load report template", err)
+	}
+
+	// Use BindDynamicSectionData to handle conversion and column expansion
+	// Corresponds to section ID "dynamic_products_section" and map field "MetaData" in config
+	if _, err := exporter.BindDynamicSectionData("dynamic_products_section", sampleProducts, "MetaData"); err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to bind dynamic data", err)
+	}
+
+	return exporter.StreamToResponse(c.Response().Writer, "dynamic_products_yaml.xlsx")
+}
+
+func (h *EmployeeHandler) ExportDynamicHorizontalHandler(c echo.Context) error {
+	exporter, err := simpleexcel.NewDataExporterFromYamlFile("dynamic_report_horizontal_config.yaml")
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to load report template", err)
+	}
+
+	// 1. Bind Dynamic Data for the first section
+	if _, err := exporter.BindDynamicSectionData("dynamic_products_section", sampleProducts, "MetaData"); err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to bind dynamic data", err)
+	}
+
+	// 2. Bind Static Data for the second section
+	exporter.BindSectionData("sales_section", sampleSales)
+
+	return exporter.StreamToResponse(c.Response().Writer, "dynamic_horizontal_products.xlsx")
+}

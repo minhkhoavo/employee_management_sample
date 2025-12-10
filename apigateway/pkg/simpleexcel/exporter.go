@@ -53,9 +53,9 @@ type SectionConfig struct {
 	ID          string         `yaml:"id"`
 	Title       string         `yaml:"title"`
 	ColSpan     int            `yaml:"col_span"` // Number of columns to span for title-only sections
-	Data        interface{}    `yaml:"-"`      // Data is bound at runtime
-	Type        string         `yaml:"type"`   // "full", "title", "hidden"
-	Locked      bool           `yaml:"locked"` // Section-level lock (default for all columns)
+	Data        interface{}    `yaml:"-"`        // Data is bound at runtime
+	Type        string         `yaml:"type"`     // "full", "title", "hidden"
+	Locked      bool           `yaml:"locked"`   // Section-level lock (default for all columns)
 	ShowHeader  bool           `yaml:"show_header"`
 	Direction   string         `yaml:"direction"` // "horizontal" or "vertical"
 	Position    string         `yaml:"position"`  // e.g., "A1"
@@ -148,6 +148,41 @@ func (e *DataExporter) BindSectionData(id string, data interface{}) *DataExporte
 	return e
 }
 
+// BindDynamicSectionData binds data to a section ID and expands columns based on a map field.
+func (e *DataExporter) BindDynamicSectionData(sectionID string, data interface{}, mapFieldName string) (*DataExporter, error) {
+	// 1. Convert data
+	dynamicData, newFields, err := ConvertStructsToDynamic(data, mapFieldName)
+	if err != nil {
+		return e, err
+	}
+
+	// 2. Bind converted data
+	e.data[sectionID] = dynamicData
+
+	// 3. Find section in template and expand columns
+	if e.template != nil {
+		found := false
+		for i := range e.template.Sheets {
+			for j := range e.template.Sheets[i].Sections {
+				sec := &e.template.Sheets[i].Sections[j]
+				if sec.ID == sectionID {
+					sec.Columns = ExpandColumnConfigs(sec.Columns, mapFieldName, newFields)
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return e, fmt.Errorf("section with ID %s not found in template", sectionID)
+		}
+	}
+
+	return e, nil
+}
+
 // buildExcel creates an Excel file in memory and returns it
 func (e *DataExporter) buildExcel() (*excelize.File, error) {
 	f := excelize.NewFile()
@@ -196,9 +231,48 @@ func (e *DataExporter) buildExcel() (*excelize.File, error) {
 	return f, nil
 }
 
+// hasComplexLayout checks if any section uses features that require in-memory processing,
+// such as horizontal stacking or custom positioning.
+func (e *DataExporter) hasComplexLayout() bool {
+	// Check manually added sheets
+	for _, sb := range e.sheets {
+		for _, sec := range sb.sections {
+			if sec.Direction == SectionDirectionHorizontal || sec.Position != "" {
+				return true
+			}
+		}
+	}
+
+	// Check YAML template sheets
+	if e.template != nil {
+		for _, sheetTmpl := range e.template.Sheets {
+			for _, sec := range sheetTmpl.Sections {
+				if sec.Direction == SectionDirectionHorizontal || sec.Position != "" {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 // StreamTo writes the Excel file to the provided writer using streaming.
 // This is more memory efficient for large datasets.
+// NOTE: If complex layout (e.g. horizontal sections) is detected, it falls back to
+// in-memory usage (using buildExcel) to ensure correct rendering.
 func (e *DataExporter) StreamTo(w io.Writer) error {
+	// Fallback for complex layouts
+	if e.hasComplexLayout() {
+		f, err := e.buildExcel()
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = f.WriteTo(w)
+		return err
+	}
+
 	f := excelize.NewFile()
 	defer f.Close()
 
@@ -272,7 +346,7 @@ func (e *DataExporter) StreamTo(w io.Writer) error {
 // streamSections renders sections using streaming writer
 func (e *DataExporter) streamSections(f *excelize.File, sw *excelize.StreamWriter, sheet string, sections []*SectionConfig) error {
 	rowNum := 1
-	hiddenRows := []int{}    // Track rows to hide
+	hiddenRows := []int{}   // Track rows to hide
 	merges := [][2]string{} // Track cells to merge [start, end]
 
 	for _, sec := range sections {
