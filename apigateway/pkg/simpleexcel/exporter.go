@@ -148,41 +148,6 @@ func (e *DataExporter) BindSectionData(id string, data interface{}) *DataExporte
 	return e
 }
 
-// BindDynamicSectionData binds data to a section ID and expands columns based on a map field.
-func (e *DataExporter) BindDynamicSectionData(sectionID string, data interface{}, mapFieldName string) (*DataExporter, error) {
-	// 1. Convert data
-	dynamicData, newFields, err := ConvertStructsToDynamic(data, mapFieldName)
-	if err != nil {
-		return e, err
-	}
-
-	// 2. Bind converted data
-	e.data[sectionID] = dynamicData
-
-	// 3. Find section in template and expand columns
-	if e.template != nil {
-		found := false
-		for i := range e.template.Sheets {
-			for j := range e.template.Sheets[i].Sections {
-				sec := &e.template.Sheets[i].Sections[j]
-				if sec.ID == sectionID {
-					sec.Columns = ExpandColumnConfigs(sec.Columns, mapFieldName, newFields)
-					found = true
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-		if !found {
-			return e, fmt.Errorf("section with ID %s not found in template", sectionID)
-		}
-	}
-
-	return e, nil
-}
-
 // buildExcel creates an Excel file in memory and returns it
 func (e *DataExporter) buildExcel() (*excelize.File, error) {
 	f := excelize.NewFile()
@@ -874,8 +839,12 @@ func extractValue(item reflect.Value, fieldName string) interface{} {
 		if f.IsValid() {
 			return f.Interface()
 		}
+	} else if item.Kind() == reflect.Map {
+		val := item.MapIndex(reflect.ValueOf(fieldName))
+		if val.IsValid() {
+			return val.Interface()
+		}
 	}
-	// Handle maps if needed, but struct is primary use case
 	return ""
 }
 

@@ -129,19 +129,19 @@ type Sale struct {
 	Rep    string
 }
 
-var sampleProducts = []Product{
-	{"Laptop", 1200.50, "Electronics", true, map[string]interface{}{"Feature01": "16GB RAM", "Feature02": "512GB SSD"}},
-	{"Mouse", 25.00, "Electronics", true, map[string]interface{}{"Feature01": "Wireless", "Feature03": "RGB"}},
-	{"Book", 15.99, "Stationery", true, nil},
-	{"Desk Chair", 150.80, "Furniture", false, map[string]interface{}{"Feature02": "Ergonomic"}},
-}
+// var sampleProducts = []Product{
+// 	{"Laptop", 1200.50, "Electronics", true, map[string]interface{}{"Feature01": "16GB RAM", "Feature02": "512GB SSD"}},
+// 	{"Mouse", 25.00, "Electronics", true, map[string]interface{}{"Feature01": "Wireless", "Feature03": "RGB"}},
+// 	{"Book", 15.99, "Stationery", true, nil},
+// 	{"Desk Chair", 150.80, "Furniture", false, map[string]interface{}{"Feature02": "Ergonomic"}},
+// }
 
-var sampleSales = []Sale{
-	{"January", 5000.0, "East", "Alice"},
-	{"February", 4500.0, "West", "Bob"},
-	{"January", 6000.0, "West", "Alice"},
-	{"March", 7200.0, "East", "Charlie"},
-}
+// var sampleSales = []Sale{
+// 	{"January", 5000.0, "East", "Alice"},
+// 	{"February", 4500.0, "West", "Bob"},
+// 	{"January", 6000.0, "West", "Alice"},
+// 	{"March", 7200.0, "East", "Charlie"},
+// }
 
 // For the YAML based example
 type ReportEmployee struct {
@@ -167,6 +167,12 @@ var sampleReportManagers = []ReportEmployee{
 // =============================================================================
 
 func (h *EmployeeHandler) ExportSimpleHandler(c echo.Context) error {
+	sampleProducts := []Product{
+		{"Laptop", 1200.50, "Electronics", true, map[string]interface{}{"Feature01": "16GB RAM", "Feature02": "512GB SSD"}},
+		{"Mouse", 25.00, "Electronics", true, map[string]interface{}{"Feature01": "Wireless", "Feature03": "RGB"}},
+		{"Book", 15.99, "Stationery", true, nil},
+		{"Desk Chair", 150.80, "Furniture", false, map[string]interface{}{"Feature02": "Ergonomic"}},
+	}
 	exporter := simpleexcel.NewDataExporter()
 
 	exporter.AddSheet("Products").
@@ -186,6 +192,18 @@ func (h *EmployeeHandler) ExportSimpleHandler(c echo.Context) error {
 }
 
 func (h *EmployeeHandler) ExportComplexHandler(c echo.Context) error {
+	sampleSales := []Sale{
+		{"January", 5000.0, "East", "Alice"},
+		{"February", 4500.0, "West", "Bob"},
+		{"January", 6000.0, "West", "Alice"},
+		{"March", 7200.0, "East", "Charlie"},
+	}
+	sampleProducts := []Product{
+		{"Laptop", 1200.50, "Electronics", true, map[string]interface{}{"Feature01": "16GB RAM", "Feature02": "512GB SSD"}},
+		{"Mouse", 25.00, "Electronics", true, map[string]interface{}{"Feature01": "Wireless", "Feature03": "RGB"}},
+		{"Book", 15.99, "Stationery", true, nil},
+		{"Desk Chair", 150.80, "Furniture", false, map[string]interface{}{"Feature02": "Ergonomic"}},
+	}
 	exporter := simpleexcel.NewDataExporter()
 
 	// Sheet 1: Multiple sections, different styles
@@ -247,6 +265,8 @@ func (h *EmployeeHandler) ExportComplexHandler(c echo.Context) error {
 			Columns: []simpleexcel.ColumnConfig{
 				{FieldName: "Name", Header: "Product Name", Width: 30},
 				{FieldName: "Available", Header: "Is Available", Width: 15},
+				{FieldName: "Price", Header: "Price", Width: 15},
+				{FieldName: "Category", Header: "Category", Width: 20},
 			},
 		})
 
@@ -267,17 +287,14 @@ func (h *EmployeeHandler) ExportFromYAMLHandler(c echo.Context) error {
 }
 
 func (h *EmployeeHandler) ExportWithLockingHandler(c echo.Context) error {
+	sampleSales := []Sale{
+		{"January", 5000.0, "East", "Alice"},
+		{"February", 4500.0, "West", "Bob"},
+		{"January", 6000.0, "West", "Alice"},
+		{"March", 7200.0, "East", "Charlie"},
+	}
+
 	exporter := simpleexcel.NewDataExporter()
-
-	// By default, a section is not locked.
-	// To make a sheet protected, at least one cell must be locked.
-	// Unlocked cells will be editable, locked cells will be read-only.
-
-	// Let''s say we want to lock the entire sheet except for the "Region" column.
-
-	// We achieve this by:
-	// 1. Setting `Locked: true` on the section, which makes all columns locked by default.
-	// 2. Setting `Locked: false` on the specific column we want to be editable.
 
 	isEditable := false // The desired state for the column
 
@@ -311,32 +328,44 @@ func (h *EmployeeHandler) ExportWithLockingHandler(c echo.Context) error {
 }
 
 func (h *EmployeeHandler) ExportDynamicHandler(c echo.Context) error {
-	// Original Column Configs
-	// We set MetaData to be locked.
-	locked := true
+	sampleProducts := []Product{
+		{
+			Name:      "Laptop Pro",
+			Price:     1299.99,
+			Category:  "Electronics",
+			Available: true,
+			MetaData: map[string]interface{}{
+				"Weight": 2.5,
+				"Color":  "Silver",
+			},
+		},
+		{
+			Name:      "Smartphone X",
+			Price:     899.99,
+			Category:  "Electronics",
+			Available: false,
+			MetaData: map[string]interface{}{
+				"Weight": 0.3,
+				"Color":  "Black",
+			},
+		},
+	}
+
 	cols := []simpleexcel.ColumnConfig{
 		{FieldName: "Name", Header: "Product Name", Width: 20},
 		{FieldName: "Price", Header: "Price", Width: 10},
 		{FieldName: "Category", Header: "Category", Width: 15},
 		{FieldName: "Available", Header: "In Stock", Width: 10},
-		{
-			FieldName: "MetaData",
-			Header:    "Meta Data",
-			Width:     15,
-			Locked:    &locked, // This config should be inherited by dynamic fields
-		},
+		{FieldName: "MetaData_Weight", Header: "Weight", Width: 10},
+		{FieldName: "MetaData_Color", Header: "Color", Width: 10},
 	}
 
 	// Convert Data
-	dynamicData, newFields, err := simpleexcel.ConvertStructsToDynamic(sampleProducts, "MetaData")
+	dynamicData, err := simpleexcel.ConvertToDynamicData(sampleProducts)
 	if err != nil {
 		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to convert dynamic data", err)
 	}
 	logger.InfoLog(c.Request().Context(), "Dynamic Data: %+v", dynamicData)
-	// Expand Columns
-	// This will replace "MetaData" column with "Feature01", "Feature02", etc.
-	// inheriting Locked=true and Width=15.
-	finalCols := simpleexcel.ExpandColumnConfigs(cols, "MetaData", newFields)
 
 	exporter := simpleexcel.NewDataExporter()
 	exporter.AddSheet("Dynamic Products").
@@ -344,43 +373,11 @@ func (h *EmployeeHandler) ExportDynamicHandler(c echo.Context) error {
 			Title:      "Dynamic Product Catalog",
 			ShowHeader: true,
 			Data:       dynamicData,
-			Columns:    finalCols,
+			Columns:    cols,
 			TitleStyle: &simpleexcel.StyleTemplate{
 				Font: &simpleexcel.FontTemplate{Bold: true},
 			},
 		})
 
 	return exporter.StreamToResponse(c.Response().Writer, "dynamic_products.xlsx")
-}
-
-func (h *EmployeeHandler) ExportDynamicYamlHandler(c echo.Context) error {
-	exporter, err := simpleexcel.NewDataExporterFromYamlFile("dynamic_report_config.yaml")
-	if err != nil {
-		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to load report template", err)
-	}
-
-	// Use BindDynamicSectionData to handle conversion and column expansion
-	// Corresponds to section ID "dynamic_products_section" and map field "MetaData" in config
-	if _, err := exporter.BindDynamicSectionData("dynamic_products_section", sampleProducts, "MetaData"); err != nil {
-		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to bind dynamic data", err)
-	}
-
-	return exporter.StreamToResponse(c.Response().Writer, "dynamic_products_yaml.xlsx")
-}
-
-func (h *EmployeeHandler) ExportDynamicHorizontalHandler(c echo.Context) error {
-	exporter, err := simpleexcel.NewDataExporterFromYamlFile("dynamic_report_horizontal_config.yaml")
-	if err != nil {
-		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to load report template", err)
-	}
-
-	// 1. Bind Dynamic Data for the first section
-	if _, err := exporter.BindDynamicSectionData("dynamic_products_section", sampleProducts, "MetaData"); err != nil {
-		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to bind dynamic data", err)
-	}
-
-	// 2. Bind Static Data for the second section
-	exporter.BindSectionData("sales_section", sampleSales)
-
-	return exporter.StreamToResponse(c.Response().Writer, "dynamic_horizontal_products.xlsx")
 }
