@@ -56,6 +56,42 @@ func TestConvertToDynamicData_ShouldValidDynamicObject(t *testing.T) {
 				},
 			},
 		},
+		"slice of structs having different fields": {
+			input: []Product{
+				{
+					ID:       101,
+					Category: "Phone",
+					MetaData: map[string]interface{}{"Feature01": "10GB RAM", "Feature03": "Ip68", "Feature05": "Screen 1080p"},
+				},
+				{
+					ID:       102,
+					Category: "Phone",
+					MetaData: map[string]interface{}{"Feature02": "20GB RAM", "Feature04": "Ip68", "Feature06": "On-board card"},
+				},
+			},
+			output: []map[string]interface{}{
+				{
+					"ID":                 101,
+					"Category":           "Phone",
+					"MetaData_Feature01": "10GB RAM",
+					"MetaData_Feature02": "",
+					"MetaData_Feature03": "Ip68",
+					"MetaData_Feature04": "",
+					"MetaData_Feature05": "Screen 1080p",
+					"MetaData_Feature06": "",
+				},
+				{
+					"ID":                 102,
+					"Category":           "Phone",
+					"MetaData_Feature01": "",
+					"MetaData_Feature02": "20GB RAM",
+					"MetaData_Feature03": "",
+					"MetaData_Feature04": "Ip68",
+					"MetaData_Feature05": "",
+					"MetaData_Feature06": "On-board card",
+				},
+			},
+		},
 	}
 
 	for name, tc := range testCases {

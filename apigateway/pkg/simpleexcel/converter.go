@@ -53,7 +53,9 @@ func flattenStruct(val reflect.Value) (map[string]interface{}, error) {
 func flattenSlice(val reflect.Value) ([]map[string]interface{}, error) {
 	length := val.Len()
 	result := make([]map[string]interface{}, length)
+	allKeys := make(map[string]struct{})
 
+	// First pass: flatten all items and collect all unique keys
 	for i := 0; i < length; i++ {
 		elem := val.Index(i)
 		if elem.Kind() == reflect.Ptr {
@@ -69,6 +71,19 @@ func flattenSlice(val reflect.Value) ([]map[string]interface{}, error) {
 			return nil, err
 		}
 		result[i] = flattened
+
+		for k := range flattened {
+			allKeys[k] = struct{}{}
+		}
+	}
+
+	// Second pass: ensure all maps have all keys
+	for i := 0; i < length; i++ {
+		for key := range allKeys {
+			if _, exists := result[i][key]; !exists {
+				result[i][key] = ""
+			}
+		}
 	}
 
 	return result, nil

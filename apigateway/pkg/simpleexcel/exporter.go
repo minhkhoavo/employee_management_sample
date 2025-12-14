@@ -3,12 +3,7 @@ package simpleexcel
 import (
 	"bytes"
 	"context"
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"reflect"
 	"strings"
 
@@ -26,6 +21,7 @@ const (
 	SectionTypeFull            = "full"   // Normal section with title, header, and data
 	SectionTypeTitleOnly       = "title"  // Only display title
 	SectionTypeHidden          = "hidden" // Hidden section (row will be hidden)
+	DefaultLockedColor         = "E0E0E0" // Light Gray for locked cells
 )
 
 // DataExporter is the main entry point for exporting data.
@@ -35,6 +31,8 @@ type DataExporter struct {
 	data map[string]interface{}
 	// sheets holds manually added sheets (for programmatic flow)
 	sheets []*SheetBuilder
+	// formatters holds registered formatter functions by name
+	formatters map[string]func(interface{}) interface{}
 }
 
 // ReportTemplate represents the YAML structure.
@@ -67,10 +65,13 @@ type SectionConfig struct {
 
 // ColumnConfig defines a column in a section.
 type ColumnConfig struct {
-	FieldName string  `yaml:"field_name"` // Struct field name or map key
-	Header    string  `yaml:"header"`
-	Width     float64 `yaml:"width"`
-	Locked    *bool   `yaml:"locked"` // Column-level lock override (overrides section Locked)
+	FieldName       string                        `yaml:"field_name"` // Struct field name or map key
+	Header          string                        `yaml:"header"`
+	Width           float64                       `yaml:"width"`
+	Locked          *bool                         `yaml:"locked"`            // Column-level lock override (overrides section Locked)
+	Formatter       func(interface{}) interface{} `yaml:"-"`                 // Optional custom formatter function (Programmatic)
+	FormatterName   string                        `yaml:"formatter"`         // Name of registered formatter (YAML)
+	HiddenFieldName string                        `yaml:"hidden_field_name"` // Hidden field name for backend use
 }
 
 // IsLocked returns whether this column should be locked.
@@ -104,27 +105,43 @@ type FillTemplate struct {
 
 func NewDataExporter() *DataExporter {
 	return &DataExporter{
-		data:   make(map[string]interface{}),
-		sheets: []*SheetBuilder{},
+		data:       make(map[string]interface{}),
+		sheets:     []*SheetBuilder{},
+		formatters: make(map[string]func(interface{}) interface{}),
 	}
 }
 
-func NewDataExporterFromYamlFile(path string) (*DataExporter, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open yaml file: %w", err)
-	}
-	defer f.Close()
-
+func NewDataExporterFromYamlConfig(yamlConfig string) (*DataExporter, error) {
 	var tmpl ReportTemplate
-	if err := yaml.NewDecoder(f).Decode(&tmpl); err != nil {
+	if yamlConfig == "" {
+		return nil, fmt.Errorf("yaml config is empty")
+	}
+	if err := yaml.Unmarshal([]byte(yamlConfig), &tmpl); err != nil {
 		return nil, fmt.Errorf("decode yaml: %w", err)
 	}
 
-	return &DataExporter{
-		template: &tmpl,
-		data:     make(map[string]interface{}),
-	}, nil
+	exporter := &DataExporter{
+		template:   &tmpl,
+		data:       make(map[string]interface{}),
+		formatters: make(map[string]func(interface{}) interface{}),
+		sheets:     make([]*SheetBuilder, 0),
+	}
+
+	// Initialize sheets from template
+	for i := range tmpl.Sheets {
+		sheetTmpl := &tmpl.Sheets[i]
+		sb := &SheetBuilder{
+			exporter: exporter,
+			name:     sheetTmpl.Name,
+			sections: make([]*SectionConfig, len(sheetTmpl.Sections)),
+		}
+		for j := range sheetTmpl.Sections {
+			sb.sections[j] = &sheetTmpl.Sections[j]
+		}
+		exporter.sheets = append(exporter.sheets, sb)
+	}
+
+	return exporter, nil
 }
 
 // =============================================================================
@@ -148,283 +165,70 @@ func (e *DataExporter) BindSectionData(id string, data interface{}) *DataExporte
 	return e
 }
 
-// buildExcel creates an Excel file in memory and returns it
-func (e *DataExporter) buildExcel() (*excelize.File, error) {
+// RegisterFormatter registers a formatter function with a name.
+// This allows referencing formatters by name in YAML configurations.
+func (e *DataExporter) RegisterFormatter(name string, f func(interface{}) interface{}) *DataExporter {
+	e.formatters[name] = f
+	return e
+}
+
+// GetSheet returns a SheetBuilder by name, or nil if not found.
+func (e *DataExporter) GetSheet(name string) *SheetBuilder {
+	for _, sheet := range e.sheets {
+		if sheet.name == name {
+			return sheet
+		}
+	}
+	return nil
+}
+
+// GetSheetByIndex returns a SheetBuilder by index (0-based), or nil if out of bounds.
+func (e *DataExporter) GetSheetByIndex(index int) *SheetBuilder {
+	if index < 0 || index >= len(e.sheets) {
+		return nil
+	}
+	return e.sheets[index]
+}
+
+// BuildExcel constructs an Excel file (*excelize.File) based on the exporter's configuration and data.
+// It processes both programmatically added sheets and sheets defined in a YAML template,
+// returning the generated excelize.File instance or an error// BuildExcel generates the excel file
+func (e *DataExporter) BuildExcel() (*excelize.File, error) {
 	f := excelize.NewFile()
 
-	// 1. Process Programmatic Sheets
+	// Process All Sheets (both fluent and YAML-initialized are now in e.sheets)
 	for i, sb := range e.sheets {
 		sheetName := sb.name
 		if i == 0 {
 			f.SetSheetName("Sheet1", sheetName)
 		} else {
-			f.NewSheet(sheetName)
-		}
-		if err := e.renderSections(f, sheetName, sb.sections); err != nil {
-			return nil, err
-		}
-	}
-
-	// 2. Process YAML Template Sheets
-	if e.template != nil {
-		for i, sheetTmpl := range e.template.Sheets {
-			sheetName := sheetTmpl.Name
-			if len(e.sheets) == 0 && i == 0 {
-				f.SetSheetName("Sheet1", sheetName)
-			} else {
-				idx, _ := f.GetSheetIndex(sheetName)
-				if idx == -1 {
-					f.NewSheet(sheetName)
-				}
+			// Check if sheet exists to avoid error if duplicates (though logic shouldn't produce duplicates easily)
+			idx, _ := f.GetSheetIndex(sheetName)
+			if idx == -1 {
+				f.NewSheet(sheetName)
 			}
+		}
 
-			sections := make([]*SectionConfig, len(sheetTmpl.Sections))
-			for j := range sheetTmpl.Sections {
-				sec := &sheetTmpl.Sections[j]
+		// Perform Late Binding for any section that has an ID and matching data in e.data
+		for _, sec := range sb.sections {
+			if sec.ID != "" {
 				if data, ok := e.data[sec.ID]; ok {
 					sec.Data = data
 				}
-				sections[j] = sec
 			}
+		}
 
-			if err := e.renderSections(f, sheetName, sections); err != nil {
-				return nil, err
-			}
+		if err := e.renderSections(f, sheetName, sb.sections); err != nil {
+			return nil, err
 		}
 	}
 
 	return f, nil
 }
 
-// hasComplexLayout checks if any section uses features that require in-memory processing,
-// such as horizontal stacking or custom positioning.
-func (e *DataExporter) hasComplexLayout() bool {
-	// Check manually added sheets
-	for _, sb := range e.sheets {
-		for _, sec := range sb.sections {
-			if sec.Direction == SectionDirectionHorizontal || sec.Position != "" {
-				return true
-			}
-		}
-	}
-
-	// Check YAML template sheets
-	if e.template != nil {
-		for _, sheetTmpl := range e.template.Sheets {
-			for _, sec := range sheetTmpl.Sections {
-				if sec.Direction == SectionDirectionHorizontal || sec.Position != "" {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
-}
-
-// StreamTo writes the Excel file to the provided writer using streaming.
-// This is more memory efficient for large datasets.
-// NOTE: If complex layout (e.g. horizontal sections) is detected, it falls back to
-// in-memory usage (using buildExcel) to ensure correct rendering.
-func (e *DataExporter) StreamTo(w io.Writer) error {
-	// Fallback for complex layouts
-	if e.hasComplexLayout() {
-		f, err := e.buildExcel()
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		_, err = f.WriteTo(w)
-		return err
-	}
-
-	f := excelize.NewFile()
-	defer f.Close()
-
-	// Process Programmatic Sheets with streaming
-	for i, sb := range e.sheets {
-		sheetName := sb.name
-		if i == 0 {
-			f.SetSheetName("Sheet1", sheetName)
-		} else {
-			f.NewSheet(sheetName)
-		}
-
-		// Use streaming writer for the sheet
-		sw, err := f.NewStreamWriter(sheetName)
-		if err != nil {
-			return fmt.Errorf("failed to create stream writer: %v", err)
-		}
-
-		// Render sections with streaming
-		if err := e.streamSections(f, sw, sheetName, sb.sections); err != nil {
-			return err
-		}
-
-		if err := sw.Flush(); err != nil {
-			return fmt.Errorf("failed to flush stream: %v", err)
-		}
-	}
-
-	// Process YAML Template Sheets with streaming
-	if e.template != nil {
-		for i, sheetTmpl := range e.template.Sheets {
-			sheetName := sheetTmpl.Name
-			if len(e.sheets) == 0 && i == 0 {
-				f.SetSheetName("Sheet1", sheetName)
-			} else {
-				idx, _ := f.GetSheetIndex(sheetName)
-				if idx == -1 {
-					f.NewSheet(sheetName)
-				}
-			}
-
-			sw, err := f.NewStreamWriter(sheetName)
-			if err != nil {
-				return fmt.Errorf("failed to create stream writer: %v", err)
-			}
-
-			sections := make([]*SectionConfig, len(sheetTmpl.Sections))
-			for j := range sheetTmpl.Sections {
-				sec := &sheetTmpl.Sections[j]
-				if data, ok := e.data[sec.ID]; ok {
-					sec.Data = data
-				}
-				sections[j] = sec
-			}
-
-			if err := e.streamSections(f, sw, sheetName, sections); err != nil {
-				return err
-			}
-
-			if err := sw.Flush(); err != nil {
-				return fmt.Errorf("failed to flush stream: %v", err)
-			}
-		}
-	}
-
-	// Write the file to the provided writer
-	_, err := f.WriteTo(w)
-	return err
-}
-
-// streamSections renders sections using streaming writer
-func (e *DataExporter) streamSections(f *excelize.File, sw *excelize.StreamWriter, sheet string, sections []*SectionConfig) error {
-	rowNum := 1
-	hiddenRows := []int{}   // Track rows to hide
-	merges := [][2]string{} // Track cells to merge [start, end]
-
-	for _, sec := range sections {
-		sectionStartRow := rowNum
-
-		// Determine section type
-		sectionType := sec.Type
-		if sectionType == "" {
-			sectionType = SectionTypeFull
-		}
-
-		// Handle title-only section
-		if sectionType == SectionTypeTitleOnly {
-			if sec.Title != "" {
-				style, _ := createStyle(f, sec.TitleStyle)
-				header := []interface{}{sec.Title}
-				cell, _ := excelize.CoordinatesToCellName(1, rowNum)
-				sw.SetRow(cell, header, excelize.RowOpts{StyleID: style})
-
-				// If ColSpan is specified, record the merge to be applied later
-				if sec.ColSpan > 1 {
-					endCell, _ := excelize.CoordinatesToCellName(sec.ColSpan, rowNum)
-					merges = append(merges, [2]string{cell, endCell})
-				}
-
-				rowNum++
-			}
-			// Add spacing
-			rowNum++
-			continue
-		}
-
-		// Handle full and hidden sections
-		if sec.Title != "" {
-			style, _ := createStyle(f, sec.TitleStyle)
-			header := []interface{}{sec.Title}
-			cell, _ := excelize.CoordinatesToCellName(1, rowNum)
-			sw.SetRow(cell, header, excelize.RowOpts{StyleID: style})
-
-			// If there are multiple columns, record the merge
-			if len(sec.Columns) > 1 {
-				endCell, _ := excelize.CoordinatesToCellName(len(sec.Columns), rowNum)
-				merges = append(merges, [2]string{cell, endCell})
-			}
-			rowNum++
-		}
-
-		if sec.ShowHeader && len(sec.Columns) > 0 {
-			headers := make([]interface{}, len(sec.Columns))
-			for i, col := range sec.Columns {
-				headers[i] = col.Header
-			}
-			cell, _ := excelize.CoordinatesToCellName(1, rowNum)
-			sw.SetRow(cell, headers)
-			rowNum++
-		}
-
-		// Process data rows
-		if sec.Data != nil {
-			v := reflect.ValueOf(sec.Data)
-			if v.Kind() == reflect.Slice && v.Len() > 0 {
-				for i := 0; i < v.Len(); i++ {
-					item := v.Index(i).Interface()
-					row := make([]interface{}, len(sec.Columns))
-					for j, col := range sec.Columns {
-						row[j] = extractValue(reflect.ValueOf(item), col.FieldName)
-					}
-					cell, _ := excelize.CoordinatesToCellName(1, rowNum)
-					if err := sw.SetRow(cell, row); err != nil {
-						return fmt.Errorf("error writing row %d: %v", i+1, err)
-					}
-					rowNum++
-
-					// Flush every 1000 rows to manage memory
-					if rowNum%1000 == 0 {
-						if err := sw.Flush(); err != nil {
-							return fmt.Errorf("error flushing rows: %v", err)
-						}
-					}
-				}
-			}
-		}
-
-		// Track hidden rows for hidden sections
-		if sectionType == SectionTypeHidden {
-			for r := sectionStartRow; r < rowNum; r++ {
-				hiddenRows = append(hiddenRows, r)
-			}
-		}
-
-		// Add spacing between sections
-		rowNum++
-	}
-
-	// After streaming is done, apply merges and hide rows
-	if err := sw.Flush(); err != nil {
-		return fmt.Errorf("error flushing before applying styles: %v", err)
-	}
-
-	for _, m := range merges {
-		f.MergeCell(sheet, m[0], m[1])
-	}
-
-	for _, r := range hiddenRows {
-		f.SetRowVisible(sheet, r, false)
-	}
-
-	return nil
-}
-
 // ExportToExcel generates the Excel file on disk.
 func (e *DataExporter) ExportToExcel(ctx context.Context, path string) error {
-	f, err := e.buildExcel()
+	f, err := e.BuildExcel()
 	if err != nil {
 		return err
 	}
@@ -434,7 +238,7 @@ func (e *DataExporter) ExportToExcel(ctx context.Context, path string) error {
 
 // ToBytes exports the Excel file to an in-memory byte slice.
 func (e *DataExporter) ToBytes() ([]byte, error) {
-	f, err := e.buildExcel()
+	f, err := e.BuildExcel()
 	if err != nil {
 		return nil, err
 	}
@@ -446,156 +250,6 @@ func (e *DataExporter) ToBytes() ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-// ToWriter writes the Excel file to the provided io.Writer.
-// For better memory efficiency with large datasets, use StreamTo instead.
-func (e *DataExporter) ToWriter(w io.Writer) error {
-	// Use streaming for better memory efficiency
-	return e.StreamTo(w)
-}
-
-// StreamToResponse writes the Excel file directly to an HTTP response writer.
-// This is useful for streaming large Excel files in web handlers.
-func (e *DataExporter) StreamToResponse(w http.ResponseWriter, filename string) error {
-	// Set headers
-	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	w.Header().Set("Content-Transfer-Encoding", "binary")
-
-	// Stream the file directly to the response
-	return e.StreamTo(w)
-}
-
-// ToCSV exports the first sheet as CSV to the provided io.Writer.
-// This implementation is memory efficient as it streams data directly
-// without loading the entire Excel file into memory.
-func (e *DataExporter) ToCSV(w io.Writer) error {
-	// Create a temporary file for the Excel data
-	tmpFile, err := os.CreateTemp("", "excel-*.xlsx")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %v", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	// Write Excel data to temp file
-	if err := e.StreamTo(tmpFile); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("failed to write temp file: %v", err)
-	}
-	tmpFile.Close()
-
-	// Open the Excel file for reading
-	f, err := excelize.OpenFile(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to open temp file: %v", err)
-	}
-	defer f.Close()
-
-	// Get the first sheet name
-	sheets := f.GetSheetList()
-	if len(sheets) == 0 {
-		return fmt.Errorf("no sheets found")
-	}
-	sheet := sheets[0]
-
-	// Create a CSV writer
-	csvWriter := csv.NewWriter(w)
-
-	// Stream rows directly from the Excel file
-	rows, err := f.Rows(sheet)
-	if err != nil {
-		return fmt.Errorf("failed to get rows: %v", err)
-	}
-
-	// Read and write rows in chunks
-	for rows.Next() {
-		row, err := rows.Columns()
-		if err != nil {
-			return fmt.Errorf("error reading row: %v", err)
-		}
-		if err := csvWriter.Write(row); err != nil {
-			return fmt.Errorf("error writing CSV row: %v", err)
-		}
-
-		// Flush periodically to manage memory
-		csvWriter.Flush()
-		if err := csvWriter.Error(); err != nil {
-			return fmt.Errorf("error flushing CSV: %v", err)
-		}
-	}
-
-	// Check for iteration errors
-	if err = rows.Close(); err != nil {
-		return fmt.Errorf("error iterating rows: %v", err)
-	}
-
-	// Flush any remaining data
-	csvWriter.Flush()
-	return csvWriter.Error()
-}
-
-// ToCSVBytes exports the first sheet as CSV and returns it as a byte slice.
-func (e *DataExporter) ToCSVBytes() ([]byte, error) {
-	var buf bytes.Buffer
-	if err := e.ToCSV(&buf); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// ToJSON exports the data as JSON to the provided io.Writer.
-// Only works with structured data (slices of structs or maps).
-func (e *DataExporter) ToJSON(w io.Writer) error {
-	var data []map[string]interface{}
-
-	// Get data from the first section with data
-	for _, sb := range e.sheets {
-		for _, section := range sb.sections {
-			if section.Data != nil {
-				// Convert the data to a slice of maps
-				rv := reflect.ValueOf(section.Data)
-				if rv.Kind() == reflect.Slice && rv.Len() > 0 {
-					data = make([]map[string]interface{}, rv.Len())
-					for i := 0; i < rv.Len(); i++ {
-						item := rv.Index(i)
-						if item.Kind() == reflect.Ptr {
-							item = item.Elem()
-						}
-
-						if item.Kind() == reflect.Struct {
-							m := make(map[string]interface{})
-							t := item.Type()
-							for j := 0; j < t.NumField(); j++ {
-								field := t.Field(j)
-								// Skip unexported fields
-								if field.PkgPath != "" {
-									continue
-								}
-								m[field.Name] = item.Field(j).Interface()
-							}
-							data[i] = m
-						}
-					}
-				}
-				break
-			}
-		}
-	}
-
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
-}
-
-// ToJSONString exports the data as a JSON string.
-func (e *DataExporter) ToJSONString() (string, error) {
-	var buf bytes.Buffer
-	if err := e.ToJSON(&buf); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
 }
 
 // =============================================================================
@@ -634,14 +288,40 @@ func (e *DataExporter) renderSections(f *excelize.File, sheet string, sections [
 		if sec.Locked {
 			hasLockedCells = true
 		} else {
-			// Check if any column is explicitly locked
-			for _, col := range sec.Columns {
-				if col.Locked != nil && *col.Locked {
-					hasLockedCells = true
-					break
+			// Determine effective columns merging user config and data fields
+			finalColumns := mergeColumns(sec.Data, sec.Columns)
+			sec.Columns = finalColumns // Update section columns to use the merged list
+
+			// Check if any cell needs locking
+			if sec.Locked {
+				hasLockedCells = true
+			} else {
+				// Check if any column is explicitly locked
+				for _, col := range sec.Columns {
+					if col.Locked != nil && *col.Locked {
+						hasLockedCells = true
+						break
+					}
 				}
 			}
 		}
+	}
+
+	// If locking is needed, first UNLOCK all cells by default so user can edit unused cells
+	if hasLockedCells {
+		unlocked := false
+		defaultStyle := &StyleTemplate{
+			Locked: &unlocked,
+		}
+		styleID, _ := createStyle(f, defaultStyle)
+		// Apply to all columns roughly (A to XFD is max, but let's do A:XFD)
+		// SetColStyle requires col name range.
+		f.SetColStyle(sheet, "A:XFD", styleID)
+	}
+
+	for _, sec := range sections {
+		// Re-determine section type as we iterate again (or we could have stored it)
+		// We already processed columns merging in the first loop so sec.Columns is updated.
 
 		// Determine section type
 		sectionType := sec.Type
@@ -723,7 +403,9 @@ func (e *DataExporter) renderSections(f *excelize.File, sheet string, sections [
 			cell, _ := excelize.CoordinatesToCellName(startCol, currentRow)
 			f.SetCellValue(sheet, cell, sec.Title)
 
-			style := getEffectiveStyle(sec.TitleStyle, sec.Locked, true)
+			// Resolve style (Title defaults to bold)
+			defaultTitle := &StyleTemplate{Font: &FontTemplate{Bold: true}}
+			style := resolveStyle(sec.TitleStyle, defaultTitle, sec.Locked)
 			styleID, _ := createStyle(f, style)
 
 			// Merge title across columns if there are multiple columns
@@ -738,6 +420,33 @@ func (e *DataExporter) renderSections(f *excelize.File, sheet string, sections [
 			currentRow++
 		}
 
+		// Render Hidden Field Name Row (if any column has HiddenFieldName)
+		hasHiddenFields := false
+		for _, col := range sec.Columns {
+			if col.HiddenFieldName != "" {
+				hasHiddenFields = true
+				break
+			}
+		}
+
+		if hasHiddenFields {
+			// Style for hidden row (Yellow background, Locked)
+			locked := true
+			hiddenStyle := &StyleTemplate{
+				Fill:   &FillTemplate{Color: "FFFF00"},
+				Locked: &locked,
+			}
+			styleID, _ := createStyle(f, hiddenStyle)
+
+			for i, col := range sec.Columns {
+				cell, _ := excelize.CoordinatesToCellName(startCol+i, currentRow)
+				f.SetCellValue(sheet, cell, col.HiddenFieldName)
+				f.SetCellStyle(sheet, cell, cell, styleID)
+			}
+			hiddenRows = append(hiddenRows, currentRow)
+			currentRow++
+		}
+
 		// Render Header
 		if sec.ShowHeader {
 			for i, col := range sec.Columns {
@@ -746,7 +455,11 @@ func (e *DataExporter) renderSections(f *excelize.File, sheet string, sections [
 
 				// Header uses column-specific locking
 				locked := col.IsLocked(sec.Locked)
-				style := getEffectiveStyle(sec.HeaderStyle, locked, true)
+
+				// Default Header Style is Bold
+				defaultHeader := &StyleTemplate{Font: &FontTemplate{Bold: true}}
+				style := resolveStyle(sec.HeaderStyle, defaultHeader, locked)
+
 				styleID, _ := createStyle(f, style)
 				f.SetCellStyle(sheet, cell, cell, styleID)
 
@@ -765,12 +478,32 @@ func (e *DataExporter) renderSections(f *excelize.File, sheet string, sections [
 				item := dataVal.Index(i)
 				for j, col := range sec.Columns {
 					val := extractValue(item, col.FieldName)
+
+					// Apply formatter
+					if col.Formatter != nil {
+						val = col.Formatter(val)
+					} else if col.FormatterName != "" {
+						if fmtFunc, ok := e.formatters[col.FormatterName]; ok {
+							val = fmtFunc(val)
+						}
+					}
+
 					cell, _ := excelize.CoordinatesToCellName(startCol+j, currentRow)
 					f.SetCellValue(sheet, cell, val)
 
 					// Apply column-specific locking for data cells
 					locked := col.IsLocked(sec.Locked)
-					style := getEffectiveStyle(sec.DataStyle, locked, false)
+
+					// Default Data Style is normal (nil), unless hidden section
+					var defaultDataStyle *StyleTemplate
+					if sectionType == SectionTypeHidden {
+						defaultDataStyle = &StyleTemplate{
+							Fill: &FillTemplate{Color: "FFFF00"},
+						}
+					}
+
+					style := resolveStyle(sec.DataStyle, defaultDataStyle, locked)
+
 					styleID, _ := createStyle(f, style)
 					f.SetCellStyle(sheet, cell, cell, styleID)
 				}
@@ -804,8 +537,8 @@ func (e *DataExporter) renderSections(f *excelize.File, sheet string, sections [
 		f.ProtectSheet(sheet, &excelize.SheetProtectionOptions{
 			Password:            "",
 			FormatCells:         false,
-			FormatColumns:       false,
-			FormatRows:          false,
+			FormatColumns:       true,
+			FormatRows:          true,
 			InsertColumns:       false,
 			InsertRows:          false,
 			InsertHyperlinks:    false,
@@ -822,14 +555,35 @@ func (e *DataExporter) renderSections(f *excelize.File, sheet string, sections [
 	return nil
 }
 
-// getEffectiveStyle returns a style with the appropriate lock setting.
-// locked parameter determines if this cell should be locked.
-func getEffectiveStyle(base *StyleTemplate, locked bool, isHeaderOrTitle bool) *StyleTemplate {
+// resolveStyle merges defined style with default style and applies conditional locked styling.
+func resolveStyle(base *StyleTemplate, defaultStyle *StyleTemplate, locked bool) *StyleTemplate {
 	s := &StyleTemplate{}
-	if base != nil {
+
+	// Apply default if base is nil
+	if base == nil {
+		if defaultStyle != nil {
+			*s = *defaultStyle
+		}
+	} else {
 		*s = *base
+		// If base has no font but default does, apply default font (rudimentary merge)
+		if s.Font == nil && defaultStyle != nil && defaultStyle.Font != nil {
+			s.Font = defaultStyle.Font
+		}
+		// If base has no fill but default does, apply default fill
+		if s.Fill == nil && defaultStyle != nil && defaultStyle.Fill != nil {
+			s.Fill = defaultStyle.Fill
+		}
 	}
+
+	// Apply explicit lock override
 	s.Locked = &locked
+
+	// Auto-gray locked cells if no fill is explicitly set
+	if locked && s.Fill == nil {
+		s.Fill = &FillTemplate{Color: DefaultLockedColor}
+	}
+
 	return s
 }
 
@@ -873,4 +627,124 @@ func createStyle(f *excelize.File, tmpl *StyleTemplate) (int, error) {
 		}
 	}
 	return f.NewStyle(style)
+}
+
+// mergeColumns merges user-defined columns with detected fields from data.
+// It prioritizes user-defined columns, then appends remaining detected fields.
+func mergeColumns(data interface{}, userConfigs []ColumnConfig) []ColumnConfig {
+	if data == nil {
+		return userConfigs
+	}
+
+	// 1. Detect all fields from data
+	detectedFields := getFields(data)
+
+	// 2. Index user configs by FieldName for O(1) lookup
+	userConfigMap := make(map[string]ColumnConfig)
+	seen := make(map[string]bool)
+	var finalCols []ColumnConfig
+
+	for _, col := range userConfigs {
+		userConfigMap[col.FieldName] = col
+		seen[col.FieldName] = true
+		finalCols = append(finalCols, col)
+	}
+
+	// 3. Append detected fields that are not in user config
+	for _, field := range detectedFields {
+		if !seen[field] {
+			// Create default config
+			col := ColumnConfig{
+				FieldName: field,
+				Header:    field, // Default header is field name
+				Width:     20,    // Default width
+			}
+			finalCols = append(finalCols, col)
+			seen[field] = true
+		}
+	}
+
+	return finalCols
+}
+
+func getFields(data interface{}) []string {
+	v := reflect.ValueOf(data)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	// If not a slice, return empty (single item support could be added but usually export is slice)
+	if v.Kind() != reflect.Slice {
+		// Try to handle single struct if passed?
+		// For now assume slice as per assumed usage, or standard usage.
+		// If it's a single struct, we can treat it as one item.
+		if v.Kind() == reflect.Struct {
+			return getStructFields(v.Type())
+		}
+		return nil
+	}
+
+	if v.Len() == 0 {
+		return nil
+	}
+
+	// Inspect first element
+	elem := v.Index(0)
+	if elem.Kind() == reflect.Ptr {
+		elem = elem.Elem()
+	}
+
+	if elem.Kind() == reflect.Struct {
+		return getStructFields(elem.Type())
+	} else if elem.Kind() == reflect.Map {
+		// Collect keys from all maps? Or just first?
+		// Collecting from all is safer but slower.
+		// For simplicity and performance, start with Union of first generic 10 rows?
+		// Let's do union of all rows to be safe as maps can vary.
+		// Limit to max 100 rows scan to prevent performance perf hit on large datasets?
+		// Or just first row as convention?
+		// "simpleexcel" implies simplicity. First row is standard convention for schema sniffing in basic libs.
+		// BUT user said "no matter what... apply default".
+		// To be robust, let's scan up to 10 rows.
+
+		keysMap := make(map[string]bool)
+		var keys []string
+
+		limit := v.Len()
+		if limit > 50 {
+			limit = 50
+		}
+
+		for i := 0; i < limit; i++ {
+			row := v.Index(i)
+			if row.Kind() == reflect.Ptr {
+				row = row.Elem()
+			}
+			if row.Kind() == reflect.Map {
+				for _, key := range row.MapKeys() {
+					k := key.String()
+					if !keysMap[k] {
+						keysMap[k] = true
+						keys = append(keys, k)
+					}
+				}
+			}
+		}
+		return keys
+	}
+
+	return nil
+}
+
+func getStructFields(t reflect.Type) []string {
+	var fields []string
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		// Skip unexported
+		if field.PkgPath != "" {
+			continue
+		}
+		fields = append(fields, field.Name)
+	}
+	return fields
 }

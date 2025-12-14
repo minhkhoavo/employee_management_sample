@@ -87,11 +87,8 @@ func (a *App) RegisterRoutes(empHandler *handler.EmployeeHandler) {
 	a.Echo.GET("/employees/:id/report", empHandler.ReportHandler)
 
 	exportGroup := a.Echo.Group("/export")
-	exportGroup.GET("/simple", empHandler.ExportSimpleHandler)
-	exportGroup.GET("/complex", empHandler.ExportComplexHandler)
+	exportGroup.GET("/fluent", empHandler.ExportFluentConfigHandler)
 	exportGroup.GET("/yaml", empHandler.ExportFromYAMLHandler)
-	exportGroup.GET("/locked", empHandler.ExportWithLockingHandler)
-	exportGroup.GET("/dynamic", empHandler.ExportDynamicHandler) // New route
 }
 
 func (a *App) Run() error {

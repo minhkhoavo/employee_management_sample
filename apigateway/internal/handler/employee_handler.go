@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -129,20 +131,6 @@ type Sale struct {
 	Rep    string
 }
 
-// var sampleProducts = []Product{
-// 	{"Laptop", 1200.50, "Electronics", true, map[string]interface{}{"Feature01": "16GB RAM", "Feature02": "512GB SSD"}},
-// 	{"Mouse", 25.00, "Electronics", true, map[string]interface{}{"Feature01": "Wireless", "Feature03": "RGB"}},
-// 	{"Book", 15.99, "Stationery", true, nil},
-// 	{"Desk Chair", 150.80, "Furniture", false, map[string]interface{}{"Feature02": "Ergonomic"}},
-// }
-
-// var sampleSales = []Sale{
-// 	{"January", 5000.0, "East", "Alice"},
-// 	{"February", 4500.0, "West", "Bob"},
-// 	{"January", 6000.0, "West", "Alice"},
-// 	{"March", 7200.0, "East", "Charlie"},
-// }
-
 // For the YAML based example
 type ReportEmployee struct {
 	ID        int
@@ -153,182 +141,69 @@ type ReportEmployee struct {
 	Gender    string
 }
 
-var sampleReportEmployees = []ReportEmployee{
-	{101, "John", "Doe", "1990-05-15", "2020-01-10", "Male"},
-	{102, "Jane", "Smith", "1992-08-21", "2019-07-22", "Female"},
-}
-
-var sampleReportManagers = []ReportEmployee{
-	{201, "Peter", "Jones", "1985-03-12", "2015-02-01", "Male"},
-}
-
-// =============================================================================
-// Excel Export Handlers
-// =============================================================================
-
-func (h *EmployeeHandler) ExportSimpleHandler(c echo.Context) error {
-	sampleProducts := []Product{
-		{"Laptop", 1200.50, "Electronics", true, map[string]interface{}{"Feature01": "16GB RAM", "Feature02": "512GB SSD"}},
-		{"Mouse", 25.00, "Electronics", true, map[string]interface{}{"Feature01": "Wireless", "Feature03": "RGB"}},
-		{"Book", 15.99, "Stationery", true, nil},
-		{"Desk Chair", 150.80, "Furniture", false, map[string]interface{}{"Feature02": "Ergonomic"}},
-	}
-	exporter := simpleexcel.NewDataExporter()
-
-	exporter.AddSheet("Products").
-		AddSection(&simpleexcel.SectionConfig{
-			Title:      "Product Catalog",
-			ShowHeader: true,
-			Data:       sampleProducts,
-			Columns: []simpleexcel.ColumnConfig{
-				{FieldName: "Name", Header: "Product Name", Width: 25},
-				{FieldName: "Category", Header: "Category", Width: 15},
-				{FieldName: "Price", Header: "Unit Price", Width: 15},
-				{FieldName: "Available", Header: "In Stock", Width: 10},
-			},
-		})
-
-	return exporter.StreamToResponse(c.Response().Writer, "products.xlsx")
-}
-
-func (h *EmployeeHandler) ExportComplexHandler(c echo.Context) error {
+func (h *EmployeeHandler) ExportFluentConfigHandler(c echo.Context) error {
 	sampleSales := []Sale{
 		{"January", 5000.0, "East", "Alice"},
 		{"February", 4500.0, "West", "Bob"},
-		{"January", 6000.0, "West", "Alice"},
-		{"March", 7200.0, "East", "Charlie"},
 	}
-	sampleProducts := []Product{
-		{"Laptop", 1200.50, "Electronics", true, map[string]interface{}{"Feature01": "16GB RAM", "Feature02": "512GB SSD"}},
-		{"Mouse", 25.00, "Electronics", true, map[string]interface{}{"Feature01": "Wireless", "Feature03": "RGB"}},
-		{"Book", 15.99, "Stationery", true, nil},
-		{"Desk Chair", 150.80, "Furniture", false, map[string]interface{}{"Feature02": "Ergonomic"}},
+	type HiddenSaleData struct {
+		HiddenFieldName  string
+		HiddenFieldValue interface{}
 	}
+	// Explicitly hidden data for demonstration
+	hiddenData := []HiddenSaleData{
+		{"Region", "North"},
+		{"Rep", "SecretAgent"},
+	}
+
 	exporter := simpleexcel.NewDataExporter()
 
-	// Sheet 1: Multiple sections, different styles
+	// Sheet 1
 	sheet1 := exporter.AddSheet("Sales Report")
 
-	// Section 1: Sales Data (Vertical Layout)
+	// Section 1: Visible Sales Data
 	sheet1.AddSection(&simpleexcel.SectionConfig{
-		Title:      "Quarterly Sales Data",
+		Title:      "Visible Sales Data",
 		ShowHeader: true,
 		Data:       sampleSales,
-		TitleStyle: &simpleexcel.StyleTemplate{
-			Font: &simpleexcel.FontTemplate{Bold: true, Color: "FFFFFF"},
-			Fill: &simpleexcel.FillTemplate{Color: "4472C4"},
-		},
-		HeaderStyle: &simpleexcel.StyleTemplate{
-			Font: &simpleexcel.FontTemplate{Bold: true},
-			Fill: &simpleexcel.FillTemplate{Color: "D9E1F2"},
-		},
 		Columns: []simpleexcel.ColumnConfig{
-			{FieldName: "Month", Header: "Month", Width: 15},
-			{FieldName: "Region", Header: "Region", Width: 15},
-			{FieldName: "Rep", Header: "Sales Rep", Width: 20},
-			{FieldName: "Amount", Header: "Sale Amount", Width: 15},
+			{FieldName: "Month", Header: "Month", Width: 15, HiddenFieldName: "db_month"},
+			{FieldName: "Region", Header: "Region", Width: 15, HiddenFieldName: "db_region"},
+			{FieldName: "Rep", Header: "Sales Rep", Width: 20, HiddenFieldName: "db_rep"},
+			{FieldName: "Amount", Header: "Sale Amount", Width: 15, HiddenFieldName: "db_amount"},
 		},
 	})
 
-	// Section 2: Summary (Horizontal Layout)
+	// Section 2: Hidden Data
 	sheet1.AddSection(&simpleexcel.SectionConfig{
-		Title:     "Report Summary",
-		Direction: simpleexcel.SectionDirectionHorizontal,
-		Position:  "F2", // Start horizontally from cell F2
-		Data: []map[string]interface{}{
-			{"Total Sales": 22700.0, "Region": "All"},
-		},
-		ShowHeader: true,
-		Columns: []simpleexcel.ColumnConfig{
-			{FieldName: "Total Sales", Header: "Total Sales", Width: 15},
-			{FieldName: "Region", Header: "Region Filter", Width: 15},
-		},
+		Title: "Hidden Data Section",
+		Type:  simpleexcel.SectionTypeHidden,
+		Data:  hiddenData,
 	})
 
-	// Section 3: A title-only section
-	sheet1.AddSection(&simpleexcel.SectionConfig{
-		Type:     simpleexcel.SectionTypeTitleOnly,
-		Title:    "Generated on: 2025-12-09",
-		ColSpan:  4,
-		Position: "A8",
-		TitleStyle: &simpleexcel.StyleTemplate{
-			Font: &simpleexcel.FontTemplate{Bold: false, Color: "888888"},
-		},
-	})
+	data, err := exporter.ToBytes()
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to generate excel file", err)
+	}
 
-	// Sheet 2: Another sheet with different data
-	exporter.AddSheet("Inventory").
-		AddSection(&simpleexcel.SectionConfig{
-			Title:      "Current Inventory Status",
-			ShowHeader: true,
-			Data:       sampleProducts,
-			Columns: []simpleexcel.ColumnConfig{
-				{FieldName: "Name", Header: "Product Name", Width: 30},
-				{FieldName: "Available", Header: "Is Available", Width: 15},
-				{FieldName: "Price", Header: "Price", Width: 15},
-				{FieldName: "Category", Header: "Category", Width: 20},
-			},
-		})
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="fluent_report_with_hidden.xlsx"`)
+	c.Response().Header().Set("Content-Transfer-Encoding", "binary")
 
-	return exporter.StreamToResponse(c.Response().Writer, "complex_report.xlsx")
+	_, err = c.Response().Write(data)
+	return err
 }
 
 func (h *EmployeeHandler) ExportFromYAMLHandler(c echo.Context) error {
-	exporter, err := simpleexcel.NewDataExporterFromYamlFile("report_config.yaml")
+	// YAML configuration
+	yamlConfig := ""
+	data, err := os.ReadFile("report_config.yaml")
 	if err != nil {
-		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to load report template", err)
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to read YAML file", err)
 	}
+	yamlConfig = string(data)
 
-	exporter.
-		BindSectionData("employees", sampleReportEmployees).
-		BindSectionData("managers", sampleReportManagers)
-
-	return exporter.StreamToResponse(c.Response().Writer, "report_from_yaml.xlsx")
-}
-
-func (h *EmployeeHandler) ExportWithLockingHandler(c echo.Context) error {
-	sampleSales := []Sale{
-		{"January", 5000.0, "East", "Alice"},
-		{"February", 4500.0, "West", "Bob"},
-		{"January", 6000.0, "West", "Alice"},
-		{"March", 7200.0, "East", "Charlie"},
-	}
-
-	exporter := simpleexcel.NewDataExporter()
-
-	isEditable := false // The desired state for the column
-
-	exporter.AddSheet("Sales Data (Region Editable)").
-		AddSection(&simpleexcel.SectionConfig{
-			Title:      "Sales Data (Region is editable, other columns are read-only)",
-			ShowHeader: true,
-			Locked:     true, // 1. Lock the whole section by default
-			Data:       sampleSales,
-			Columns: []simpleexcel.ColumnConfig{
-				{FieldName: "Month", Header: "Month", Width: 15},
-				{
-					FieldName: "Region",
-					Header:    "Region (Editable)",
-					Width:     20,
-					Locked:    &isEditable, // 2. Override lock for this column
-				},
-				{FieldName: "Rep", Header: "Sales Rep", Width: 20},
-				{FieldName: "Amount", Header: "Sale Amount", Width: 15},
-			},
-			TitleStyle: &simpleexcel.StyleTemplate{
-				Font: &simpleexcel.FontTemplate{Bold: true, Color: "FFFFFF"},
-				Fill: &simpleexcel.FillTemplate{Color: "C00000"},
-			},
-			HeaderStyle: &simpleexcel.StyleTemplate{
-				Font: &simpleexcel.FontTemplate{Bold: true},
-			},
-		})
-
-	return exporter.StreamToResponse(c.Response().Writer, "locked_report.xlsx")
-}
-
-func (h *EmployeeHandler) ExportDynamicHandler(c echo.Context) error {
-	sampleProducts := []Product{
+	productSectionEditable := []Product{
 		{
 			Name:      "Laptop Pro",
 			Price:     1299.99,
@@ -350,34 +225,96 @@ func (h *EmployeeHandler) ExportDynamicHandler(c echo.Context) error {
 			},
 		},
 	}
-
-	cols := []simpleexcel.ColumnConfig{
-		{FieldName: "Name", Header: "Product Name", Width: 20},
-		{FieldName: "Price", Header: "Price", Width: 10},
-		{FieldName: "Category", Header: "Category", Width: 15},
-		{FieldName: "Available", Header: "In Stock", Width: 10},
-		{FieldName: "MetaData_Weight", Header: "Weight", Width: 10},
-		{FieldName: "MetaData_Color", Header: "Color", Width: 10},
+	productSectionOriginal := []Product{
+		{
+			Name:      "Laptop Pro",
+			Price:     1299.99,
+			Category:  "Electronics",
+			Available: true,
+			MetaData: map[string]interface{}{
+				"Weight": 2.5,
+				"Color":  "Silver",
+			},
+		},
+		{
+			Name:      "Smartphone X",
+			Price:     899.99,
+			Category:  "Electronics",
+			Available: false,
+			MetaData: map[string]interface{}{
+				"Weight": 0.3,
+				"Color":  "Black",
+			},
+		},
+	}
+	type HiddenSaleData struct {
+		HiddenFieldName  string
+		HiddenFieldValue interface{}
+	}
+	// Explicitly hidden data for demonstration
+	hiddenData := []HiddenSaleData{
+		{"Region", "North"},
+		{"Rep", "SecretAgent"},
 	}
 
 	// Convert Data
-	dynamicData, err := simpleexcel.ConvertToDynamicData(sampleProducts)
+	dynamicDataEditable, err := simpleexcel.ConvertToDynamicData(productSectionEditable)
 	if err != nil {
 		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to convert dynamic data", err)
 	}
-	logger.InfoLog(c.Request().Context(), "Dynamic Data: %+v", dynamicData)
+	logger.InfoLog(c.Request().Context(), "Dynamic Data Editable: %+v", dynamicDataEditable)
 
-	exporter := simpleexcel.NewDataExporter()
-	exporter.AddSheet("Dynamic Products").
-		AddSection(&simpleexcel.SectionConfig{
-			Title:      "Dynamic Product Catalog",
+	dynamicDataOriginal, err := simpleexcel.ConvertToDynamicData(productSectionOriginal)
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to convert dynamic data", err)
+	}
+	logger.InfoLog(c.Request().Context(), "Dynamic Data Original: %+v", dynamicDataOriginal)
+
+	// Initialize exporter with inline config
+	exporter, err := simpleexcel.NewDataExporterFromYamlConfig(yamlConfig)
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to parse inline report config", err)
+	}
+
+	// Register a simple currency formatter for demonstration
+	exporter.RegisterFormatter("currency", func(v interface{}) interface{} {
+		if val, ok := v.(float64); ok {
+			return fmt.Sprintf("$%.2f", val)
+		}
+		return v
+	})
+
+	// Bind data
+	exporter.
+		BindSectionData("product_section_editable", dynamicDataEditable).
+		BindSectionData("product_section_original", dynamicDataOriginal)
+
+	// Demonstrate Mixed Config: Add a hidden section programmatically to the existing sheet
+	if sheet := exporter.GetSheet("Executive Report"); sheet != nil {
+		sheet.AddSection(&simpleexcel.SectionConfig{
+			Title:      "Additional Hidden Data",
+			Type:       simpleexcel.SectionTypeHidden,
+			Data:       hiddenData,
 			ShowHeader: true,
-			Data:       dynamicData,
-			Columns:    cols,
-			TitleStyle: &simpleexcel.StyleTemplate{
-				Font: &simpleexcel.FontTemplate{Bold: true},
+			Columns: []simpleexcel.ColumnConfig{
+				{FieldName: "HiddenFieldName", Header: "Field Name", Width: 20},
+				{FieldName: "HiddenFieldValue", Header: "Field Value", Width: 20},
 			},
 		})
+	}
 
-	return exporter.StreamToResponse(c.Response().Writer, "dynamic_products.xlsx")
+	// Export to bytes
+	excelBytes, err := exporter.ToBytes()
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to generate Excel file", err)
+	}
+
+	// Set headers for file download
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="executive_report.xlsx"`)
+	c.Response().Header().Set("Content-Length", strconv.Itoa(len(excelBytes)))
+
+	// Write response
+	_, err = c.Response().Write(excelBytes)
+	return err
 }

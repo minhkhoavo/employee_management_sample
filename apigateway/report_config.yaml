@@ -3,79 +3,92 @@ name: "Employee Report"
 description: "Example multi-section report using YAML configuration"
 
 sheets:
-  - name: "Report"
+  - name: "Executive Report"
     sections:
-      - id: "employees"
-        title: "Employees (Editable)"
-        locked: false
-        show_header: true
-        # direction: "horizontal"
-        gap_after: 0
-        title_style:
-          font:
-            bold: true
-            color: "#FFFFFF"
-          fill:
-            color: "#1565C0"
-        header_style:
-          font:
-            bold: true
-            color: "#FFFFFF"
-          fill:
-            color: "#1976D2"
-        columns:
-          - field_name: "ID"
-            header: "Employee ID"
-            width: 12
-          - field_name: "FirstName"
-            header: "First Name"
-            width: 20
-          - field_name: "LastName"
-            header: "Last Name"
-            width: 20
-          - field_name: "BirthDate"
-            header: "Birth Date"
-            width: 15            
-          - field_name: "HireDate"
-            header: "Hire Date"
-            width: 15
-          - field_name: "Gender"
-            header: "Gender"
-            width: 10
-
-      - id: "managers"
-        title: "Manager Employees (Read-Only)"
-        locked: true
-        show_header: true
-        direction: "horizontal"
-        title_style:
-          font:
-            bold: true
-            color: "#FFFFFF"
-          fill:
-            color: "#2E7D32"
-        header_style:
-          font:
-            bold: true
-            color: "#FFFFFF"
-          fill:
-            color: "#4CAF50"
-        columns:
-          - field_name: "ID"
-            header: "Manager ID"
-            width: 12
-          - field_name: "FirstName"
-            header: "First Name"
-            width: 20
-          - field_name: "LastName"
-            header: "Last Name"
-            width: 20
-          - field_name: "BirthDate"
-            header: "Birth Date"
-            width: 15
-          - field_name: "HireDate"
-            header: "Hire Date"
-            width: 15
-          - field_name: "Gender"
-            header: "Gender"
-            width: 10
+    - id: "product_section_editable"
+      title: "Product Section Editable"
+      type: "full"
+      show_header: true
+      locked: true
+      direction: "horizontal"        
+      title_style:
+        font:
+          bold: true
+          color: "#FFFFFF"
+        fill:
+          color: "#4F81BD"
+      header_style:
+        font:
+          bold: true
+        fill:
+          color: "#DCE6F1"
+      columns:
+        - field_name: "Name"
+          header: "Product Name"
+          width: 30
+          hidden_field_name: "db_name"
+        - field_name: "Available"
+          header: "Is Available"
+          width: 15
+          hidden_field_name: "db_available"
+        - field_name: "Price"
+          header: "Price"
+          width: 15
+          locked: false
+          hidden_field_name: "db_price"
+        - field_name: "Category"
+          header: "Category"
+          width: 20
+          hidden_field_name: "db_category"
+        - field_name: "MetaData_Weight"
+          header: "Weight"
+          width: 10
+          locked: false
+          hidden_field_name: "db_meta_data_weight"
+        - field_name: "MetaData_Color"
+          header: "Color"
+          width: 10
+          locked: false
+          hidden_field_name: "db_meta_data_color"
+    - id: "product_section_original"
+      title: "Product Section Original"
+      type: "full"
+      show_header: true
+      locked: true
+      direction: "horizontal"        
+      title_style:
+        font:
+          bold: true
+          color: "#FFFFFF"
+        fill:
+          color: "#9BBB59"
+      header_style:
+        font:
+          bold: true
+        fill:
+          color: "#DCE6F1"
+      columns:
+        - field_name: "Name"
+          hidden_field_name: "db_name"
+          header: "Product Name"
+          width: 30
+        - field_name: "Available"
+          hidden_field_name: "db_available"
+          header: "Is Available"
+          width: 15
+        - field_name: "Price"
+          hidden_field_name: "db_price"
+          header: "Price"
+          width: 15
+        - field_name: "Category"
+          hidden_field_name: "db_category"
+          header: "Category"
+          width: 20            
+        - field_name: "MetaData_Weight"
+          hidden_field_name: "db_meta_data_weight"
+          header: "Weight"
+          width: 10
+        - field_name: "MetaData_Color"
+          hidden_field_name: "db_meta_data_color"
+          header: "Color"
+          width: 10

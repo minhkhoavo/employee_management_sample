@@ -1,12 +1,15 @@
 # simpleexcel - Simple Data Exporter
 
-A lightweight Go library for exporting data to Excel files with basic styling and layout support. This is a simplified version of the `pgexcel` package, focusing on core functionality.
+A lightweight Go library for exporting data to Excel files with basic styling and layout support.
 
 ## Features
 
 - **Simple API**: Easy-to-use fluent interface for building Excel exports
 - **YAML Support**: Define templates with YAML for consistent report generation
-- **Basic Styling**: Support for fonts, colors, and cell locking
+- **Mixed Configuration**: Combine YAML templates with programmatic dynamic updates
+- **Hidden Data**: Support for hidden columns (metadata) and hidden sections with distinct styling
+- **Advanced Protection**: Smart cell locking (unused cells unlocked) and formatting permissions
+- **Formatters**: Custom data formatting (e.g., currency, dates) via function registration
 - **Flexible Layouts**: Position sections vertically or horizontally
 - **Runtime Data Binding**: Bind data to templates at runtime
 
@@ -95,7 +98,19 @@ sheets:
 ### Using YAML Template
 
 ```go
-tmpl, err := simpleexcel.NewDataExporterFromYamlFile("report.yaml")
+import (
+    "os"
+    "github.com/your-org/your-repo/apigateway/pkg/simpleexcel"
+)
+
+// Read YAML file
+data, err := os.ReadFile("report.yaml")
+if err != nil {
+    log.Fatal(err)
+}
+
+// Initialize exporter
+tmpl, err := simpleexcel.NewDataExporterFromYamlConfig(string(data))
 if err != nil {
     log.Fatal(err)
 }
@@ -110,36 +125,91 @@ if err != nil {
 }
 ```
 
+## Advanced Features
+
+### Hidden Data & Metadata
+You can include data in your Excel report that is hidden from the user by default but can be unhidden for inspection or processing.
+
+**Hidden Fields (Columns)**
+Add a `HiddenFieldName` to any column configuration. This will generate a hidden row immediately below the section title containing these field names. This is useful for mapping Excel columns back to database fields.
+
+**Hidden Sections**
+Set a section's type to `hidden` (or `SectionTypeHidden` in Go).
+- **Behavior**: Data rows in this section are automatically hidden.
+- **Styling**: Hidden rows have a **yellow background** (`#FFFF00`) by default to distinguish them as metadata when unhidden.
+
+### Sheet Protection
+When `Locked: true` is set on any section or column:
+1.  **Unused Cells Unlocked**: All cells outside the specific report sections are automatically **unlocked**. Users can freely add data to the rest of the sheet.
+2.  **Report Integrity**: Cells within `Locked` sections are read-only.
+3.  **Hidden Row Locking**: Hidden metadata rows are explicitly locked to prevent tampering, even if unhidden.
+4.  **Formatting Allowed**: Row and Column formatting is enabled in protected sheets, allowing users to **hide/unhide** rows to view metadata.
+
+### Mixed Configuration (YAML + Fluent)
+You can load a base template from YAML and then extend it programmatically.
+
+```go
+// 1. Load from YAML
+exporter, _ := simpleexcel.NewDataExporterFromYamlConfig(yamlConfig)
+
+// 2. Bind Data to YAML sections
+exporter.BindSectionData("employees", employees)
+
+// 3. Extend programmatically
+if sheet := exporter.GetSheet("Employee Report"); sheet != nil {
+    sheet.AddSection(&simpleexcel.SectionConfig{
+        Title: "Debug Info",
+        Type:  simpleexcel.SectionTypeHidden,
+        Data:  debugData,
+        // ...
+    })
+}
+```
+
 ## API Reference
 
 ### DataExporter
 
 #### Constructors
 - `NewDataExporter()` - Creates a new DataExporter instance
-- `NewDataExporterFromYamlFile(path string)` - Creates a DataExporter from a YAML template file
+- `NewDataExporterFromYamlConfig(config string)` - Creates a DataExporter from a YAML string
 
 #### Methods
 - `AddSheet(name string) *SheetBuilder` - Start building a new sheet
+- `GetSheet(name string) *SheetBuilder` - Retrieve an existing sheet by name
+- `GetSheetByIndex(index int) *SheetBuilder` - Retrieve an existing sheet by index
+- `RegisterFormatter(name string, fn func(interface{}) interface{})` - Register a value formatter
 - `BindSectionData(id string, data interface{}) *DataExporter` - Bind data to a YAML section
 - `ExportToExcel(ctx context.Context, path string) error` - Export to Excel file
-- `StreamTo(w io.Writer) error` - Stream Excel file to a writer (memory efficient for large files)
-- `StreamToResponse(w http.ResponseWriter, filename string) error` - Stream Excel file to HTTP response
-- `ToCSV(w io.Writer) error` - Export first sheet as CSV (memory efficient)
-- `ToCSVBytes() ([]byte, error)` - Export first sheet as CSV bytes
+- `ToBytes() ([]byte, error)` - Export to in-memory byte slice
 
 ### SectionConfig
+
+### Configuration Structs
 
 ```go
 type SectionConfig struct {
     ID          string         `yaml:"id"`
     Title       string         `yaml:"title"`
+    Type        string         `yaml:"type"`      // "full" (default) or "hidden"
     Data        interface{}    `yaml:"-"`
     Locked      bool           `yaml:"locked"`
     ShowHeader  bool           `yaml:"show_header"`
     Direction   string         `yaml:"direction"` // "horizontal" or "vertical"
     Position    string         `yaml:"position"`  // e.g., "A1"
     TitleStyle  *StyleTemplate `yaml:"title_style"`
+    HeaderStyle *StyleTemplate `yaml:"header_style"`
+    DataStyle   *StyleTemplate `yaml:"data_style"`
     Columns     []ColumnConfig `yaml:"columns"`
+}
+
+type ColumnConfig struct {
+    FieldName       string  `yaml:"field_name"`
+    HiddenFieldName string  `yaml:"hidden_field_name"` // Metadata field name (hidden row)
+    Header          string  `yaml:"header"`
+    Width           float64 `yaml:"width"`
+    Locked          *bool   `yaml:"locked"`
+    Formatter       string  `yaml:"formatter"` // Name of registered formatter
 }
 ```
 
@@ -162,154 +232,6 @@ type SectionConfig struct {
 
 3. **Caching**: For frequently generated reports, consider caching the generated file.
 
-## Web Integration
-
-### Streaming Large Exports
-
-The package now includes built-in support for streaming large exports with minimal memory usage:
-
-```go
-// In your HTTP handler
-exportHandler := func(w http.ResponseWriter, r *http.Request) {
-    exporter := simpleexcel.NewDataExporter()
-    // ... configure exporter ...
-    
-    // Stream directly to response
-    if err := exporter.StreamToResponse(w, "large_export.xlsx"); err != nil {
-        http.Error(w, "Export failed", http.StatusInternalServerError)
-        return
-    }
-}
-```
-
-### Performance Considerations
-
-- **Memory Efficiency**: The `StreamTo` and `StreamToResponse` methods use `excelize.StreamWriter` internally to handle large datasets with minimal memory usage.
-- **Chunked Processing**: Data is processed in chunks (1000 rows at a time) to maintain low memory footprint.
-- **Automatic Cleanup**: All resources are properly cleaned up, including temporary files.
-
-For complete web framework examples (Echo, Gin, etc.), see the [WEB_INTEGRATION.md](WEB_INTEGRATION.md) file.
-
-package main
-
-import (
-	"net/http"
-	"github.com/labstack/echo/v4"
-	"your-module-path/pkg/simpleexcel"
-)
-
-func main() {
-	e := echo.New()
-
-	// Excel Export
-	e.GET("/export/excel", func(c echo.Context) error {
-		// Sample data
-		data := []struct {
-			ID   int    `json:"id"`
-			Name string `json:"name"`
-			Role string `json:"role"`
-		}{
-			{1, "John Doe", "Developer"},
-			{2, "Jane Smith", "Designer"},
-		}
-
-		exporter := simpleexcel.NewDataExporter().
-			AddSheet("Employees").
-			AddSection(&simpleexcel.SectionConfig{
-				Title:      "Team Members",
-				Data:       data,
-				ShowHeader: true,
-				Columns: []simpleexcel.ColumnConfig{
-					{FieldName: "ID", Header: "Employee ID", Width: 15},
-					{FieldName: "Name", Header: "Full Name", Width: 25},
-					{FieldName: "Role", Header: "Position", Width: 20},
-				},
-			}).
-			Build()
-
-		// Set headers for file download
-		c.Response().Header().Set(echo.HeaderContentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="employees.xlsx"`)
-		
-		// Stream directly to response
-		return exporter.ToWriter(c.Response().Writer)
-	})
-
-	// CSV Export
-	e.GET("/export/csv", func(c echo.Context) error {
-		exporter := simpleexcel.NewDataExporter()
-		// ... configure exporter ...
-
-		c.Response().Header().Set(echo.HeaderContentType, "text/csv")
-		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="report.csv"`)
-		
-		return exporter.ToCSV(c.Response().Writer)
-	})
-
-	e.Logger.Fatal(e.Start(":1323"))
-}
-```
-
-### Gin Framework
-
-```go
-package main
-
-import (
-	"github.com/gin-gonic/gin"
-	"your-module-path/pkg/simpleexcel"
-)
-
-func main() {
-	r := gin.Default()
-
-	// Excel Export
-	r.GET("/export/excel", func(c *gin.Context) {
-		// Sample data
-		data := []struct {
-			ID   int    `json:"id"`
-			Name string `json:"name"`
-			Role string `json:"role"`
-		}{
-			{1, "John Doe", "Developer"},
-			{2, "Jane Smith", "Designer"},
-		}
-
-		exporter := simpleexcel.NewDataExporter().
-			AddSheet("Employees").
-			AddSection(&simpleexcel.SectionConfig{
-				Title:      "Team Members",
-				Data:       data,
-				ShowHeader: true,
-				Columns: []simpleexcel.ColumnConfig{
-					{FieldName: "ID", Header: "Employee ID", Width: 15},
-					{FieldName: "Name", Header: "Full Name", Width: 25},
-					{FieldName: "Role", Header: "Position", Width: 20},
-				},
-			}).
-			Build()
-
-		// Stream directly to response
-		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		c.Header("Content-Disposition", `attachment; filename="employees.xlsx"`)
-		
-		exporter.ToWriter(c.Writer)
-	})
-
-	// CSV Export
-	r.GET("/export/csv", func(c *gin.Context) {
-		exporter := simpleexcel.NewDataExporter()
-		// ... configure exporter ...
-
-		c.Header("Content-Type", "text/csv")
-		c.Header("Content-Disposition", `attachment; filename="report.csv"`)
-		
-		exporter.ToCSV(c.Writer)
-	})
-
-	r.Run(":8080")
-}
-```
 
 ## Best Practices
 
