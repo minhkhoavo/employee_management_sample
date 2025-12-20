@@ -1,0 +1,164 @@
+version: "1.0"
+name: "Employee Report"
+description: "Example multi-section report using YAML configuration"
+
+sheets:
+  - name: "Executive Report"
+    sections:
+    - id: "product_section_editable"
+      title: "Product Section Editable"
+      type: "full"
+      show_header: true
+      locked: true
+      direction: "horizontal"
+      has_filter: true
+      title_style:
+        font:
+          bold: true
+          color: "#FFFFFF"
+        fill:
+          color: "#4F81BD"
+      title_height: 40
+      header_height: 30
+      data_height: 25
+      header_style:
+        font:
+          bold: true
+        fill:
+          color: "#DCE6F1"
+      columns:
+        - field_name: "Name"
+          header: "Product Name"
+          width: 35
+          height: 30
+          hidden_field_name: "db_name"
+        - field_name: "Available"
+          header: "Is Available"
+          width: 12
+          height: 25
+          hidden_field_name: "db_available"
+        - field_name: "Price"
+          header: "Price"
+          width: 18
+          height: 40
+          locked: false
+          hidden_field_name: "db_price"
+        - field_name: "Category"
+          header: "Category"
+          width: 25
+          height: 35
+          locked: false
+          hidden_field_name: "db_category"
+        - field_name: "Weight"
+          header: "Weight"
+          width: 8
+          height: 20
+          locked: false
+          hidden_field_name: "db_weight"
+        - field_name: "Color"
+          header: "Color"
+          width: 14
+          height: 28
+          locked: false
+          hidden_field_name: "db_color"
+    - id: "product_section_original"
+      title: "Product Section Original"
+      type: "full"
+      show_header: true
+      locked: true
+      direction: "horizontal"
+      title_style:
+        font:
+          bold: true
+          color: "#FFFFFF"
+        fill:
+          color: "#9BBB59"
+      header_style:
+        font:
+          bold: true
+        fill:
+          color: "#DCE6F1"
+      columns:
+        - field_name: "Name"
+          hidden_field_name: "db_name"
+          header: "Product Name"
+          width: 30
+        - field_name: "Available"
+          hidden_field_name: "db_available"
+          header: "Is Available"
+          width: 15
+        - field_name: "Price"
+          hidden_field_name: "db_price"
+          header: "Price"
+          width: 15
+        - field_name: "Category"
+          hidden_field_name: "db_category"
+          header: "Category"
+          width: 20
+        - field_name: "Weight"
+          hidden_field_name: "db_weight"
+          header: "Weight"
+          width: 10
+        - field_name: "Color"
+          hidden_field_name: "db_color"
+          header: "Color"
+          width: 10
+    - id: "product_comparison_section"
+      title: "Product Change Detect"
+      type: "full"
+      show_header: true
+      locked: true
+      direction: "horizontal"
+      source_sections: ["product_section_editable"]
+      title_style:
+        font:
+          bold: true
+          color: "#FFFFFF"
+        fill:
+          color: "#000000"
+      header_style:
+        font:
+          bold: true
+        fill:
+          color: "#DCE6F1"
+      columns:
+        - field_name: "Price Status"
+          header: "Price"
+          width: 15
+          hidden_field_name: "db_price"
+          compare_with:
+            section_id: "product_section_editable"
+            field_name: "Price"
+          compare_against:
+            section_id: "product_section_original"
+            field_name: "Price"
+        - field_name: "Category Status"
+          header: "Category"
+          width: 15
+          hidden_field_name: "db_category"
+          compare_with:
+            section_id: "product_section_editable"
+            field_name: "Category"
+          compare_against:
+            section_id: "product_section_original"
+            field_name: "Category"
+        - field_name: "Weight Status"
+          header: "Weight"
+          width: 15
+          hidden_field_name: "db_weight"
+          compare_with:
+            section_id: "product_section_editable"
+            field_name: "Weight"
+          compare_against:
+            section_id: "product_section_original"
+            field_name: "Weight"
+        - field_name: "Color Status"
+          header: "Color"
+          width: 15
+          hidden_field_name: "db_color"
+          compare_with:
+            section_id: "product_section_editable"
+            field_name: "Color"
+          compare_against:
+            section_id: "product_section_original"
+            field_name: "Color"

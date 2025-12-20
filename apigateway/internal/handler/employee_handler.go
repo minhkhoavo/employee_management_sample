@@ -12,6 +12,7 @@ import (
 	"github.com/locvowork/employee_management_sample/apigateway/internal/service"
 	"github.com/locvowork/employee_management_sample/apigateway/internal/service/serviceutils"
 	"github.com/locvowork/employee_management_sample/apigateway/pkg/simpleexcel"
+	"github.com/locvowork/employee_management_sample/apigateway/pkg/simpleexcelv2"
 )
 
 type EmployeeHandler struct {
@@ -121,7 +122,9 @@ type Product struct {
 	Price     float64
 	Category  string
 	Available bool
-	MetaData  map[string]interface{}
+	Weight    float64
+	Color     string
+	// MetaData  map[string]interface{}
 }
 
 type Sale struct {
@@ -209,20 +212,16 @@ func (h *EmployeeHandler) ExportFromYAMLHandler(c echo.Context) error {
 			Price:     1299.99,
 			Category:  "Electronics",
 			Available: true,
-			MetaData: map[string]interface{}{
-				"Weight": 2.5,
-				"Color":  "Silver",
-			},
+			Weight:    2.5,
+			Color:     "Silver",
 		},
 		{
 			Name:      "Smartphone X",
 			Price:     899.99,
 			Category:  "Electronics",
 			Available: false,
-			MetaData: map[string]interface{}{
-				"Weight": 0.3,
-				"Color":  "Black",
-			},
+			Weight:    0.3,
+			Color:     "Black",
 		},
 	}
 	productSectionOriginal := []Product{
@@ -231,20 +230,16 @@ func (h *EmployeeHandler) ExportFromYAMLHandler(c echo.Context) error {
 			Price:     1299.99,
 			Category:  "Electronics",
 			Available: true,
-			MetaData: map[string]interface{}{
-				"Weight": 2.5,
-				"Color":  "Silver",
-			},
+			Weight:    2.5,
+			Color:     "Silver",
 		},
 		{
 			Name:      "Smartphone X",
 			Price:     899.99,
 			Category:  "Electronics",
 			Available: false,
-			MetaData: map[string]interface{}{
-				"Weight": 0.3,
-				"Color":  "Black",
-			},
+			Weight:    0.3,
+			Color:     "Black",
 		},
 	}
 	type HiddenSaleData struct {
@@ -312,6 +307,87 @@ func (h *EmployeeHandler) ExportFromYAMLHandler(c echo.Context) error {
 	// Set headers for file download
 	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Response().Header().Set("Content-Disposition", `attachment; filename="executive_report.xlsx"`)
+	c.Response().Header().Set("Content-Length", strconv.Itoa(len(excelBytes)))
+
+	// Write response
+	_, err = c.Response().Write(excelBytes)
+	return err
+}
+
+func (h *EmployeeHandler) ExportV2FromYAMLHandler(c echo.Context) error {
+	// YAML configuration
+	yamlConfig := ""
+	data, err := os.ReadFile("report_config_v2.yaml")
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to read YAML file", err)
+	}
+	yamlConfig = string(data)
+
+	productSectionEditable := []Product{
+		{
+			Name:      "Laptop Pro",
+			Price:     1299.99,
+			Category:  "Electronics",
+			Available: true,
+			Weight:    2.5,
+			Color:     "Silver",
+		},
+		{
+			Name:      "Smartphone X",
+			Price:     899.99,
+			Category:  "Electronics",
+			Available: false,
+			Weight:    0.3,
+			Color:     "Black",
+		},
+	}
+	productSectionOriginal := []Product{
+		{
+			Name:      "Laptop Pro",
+			Price:     1299.99,
+			Category:  "Electronics",
+			Available: true,
+			Weight:    2.5,
+			Color:     "Silver",
+		},
+		{
+			Name:      "Smartphone X",
+			Price:     899.99,
+			Category:  "Electronics",
+			Available: false,
+			Weight:    0.3,
+			Color:     "Black",
+		},
+	}
+
+	// Initialize exporter with inline config
+	exporter, err := simpleexcelv2.NewExcelDataExporterFromYamlConfig(yamlConfig)
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to parse inline report config", err)
+	}
+
+	// Register a simple currency formatter for demonstration
+	exporter.RegisterFormatter("currency", func(v interface{}) interface{} {
+		if val, ok := v.(float64); ok {
+			return fmt.Sprintf("$%.2f", val)
+		}
+		return v
+	})
+
+	// Bind data
+	exporter.
+		BindSectionData("product_section_editable", productSectionEditable).
+		BindSectionData("product_section_original", productSectionOriginal)
+
+	// Export to bytes
+	excelBytes, err := exporter.ToBytes()
+	if err != nil {
+		return serviceutils.ResponseError(c, http.StatusInternalServerError, "Failed to generate Excel file", err)
+	}
+
+	// Set headers for file download
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="comparason_report.xlsx"`)
 	c.Response().Header().Set("Content-Length", strconv.Itoa(len(excelBytes)))
 
 	// Write response

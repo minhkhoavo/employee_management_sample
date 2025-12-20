@@ -89,6 +89,10 @@ func (a *App) RegisterRoutes(empHandler *handler.EmployeeHandler) {
 	exportGroup := a.Echo.Group("/export")
 	exportGroup.GET("/fluent", empHandler.ExportFluentConfigHandler)
 	exportGroup.GET("/yaml", empHandler.ExportFromYAMLHandler)
+
+	exportGroupV2 := a.Echo.Group("/export/v2")
+	exportGroupV2.GET("/fluent", empHandler.ExportFluentConfigHandler)
+	exportGroupV2.GET("/yaml", empHandler.ExportV2FromYAMLHandler)
 }
 
 func (a *App) Run() error {
