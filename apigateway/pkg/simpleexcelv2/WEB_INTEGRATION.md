@@ -13,8 +13,7 @@ This guide shows how to use the `simpleexcel` package with popular Go web framew
 
 The `simpleexcel` package provides efficient streaming capabilities for handling large exports with minimal memory usage. The key methods are:
 
-- `StreamTo(w io.Writer) error` - Streams Excel data directly to any writer
-- `StreamToResponse(w http.ResponseWriter, filename string) error` - Handles HTTP response streaming with proper headers
+- `ToWriter(w io.Writer) error` - Streams Excel data directly to any writer
 - `ToCSV(w io.Writer) error` - Efficiently exports to CSV format
 
 ### Basic Streaming Example
@@ -34,7 +33,7 @@ exportHandler := func(w http.ResponseWriter, r *http.Request) {
         })
     
     // Stream directly to response
-    if err := exporter.StreamToResponse(w, "export.xlsx"); err != nil {
+    if err := exporter.ToWriter(w); err != nil {
         log.Printf("Export failed: %v", err)
         http.Error(w, "Export failed", http.StatusInternalServerError)
     }
@@ -130,123 +129,49 @@ func exportCSV(c *gin.Context) {
 4. **File Names**: Use meaningful filenames with proper extensions
 5. **Timeouts**: Consider adding timeouts for large exports
 
-## Streaming Large Data Exports
+### Bulk Data Export with `ToWriter`
 
-For large datasets, it's crucial to use streaming to avoid high memory usage. Here's how to implement efficient streaming with both Echo and Gin frameworks.
-
-### StreamWriter Approach (Recommended)
-
-The `excelize` package provides a `StreamWriter` that allows writing data in chunks. Here's how to use it with web frameworks:
+For many scenarios, `ToWriter` combined with a pre-fetched dataset is sufficient and easy to implement.
 
 #### Echo Framework
 
 ```go
-func streamLargeExport(c echo.Context) error {
-    // Set headers for streaming
+func exportLargeData(c echo.Context) error {
+    data := fetchEmployeesFromDB() // Returns []Employee
+    
+    exporter := simpleexcel.NewDataExporter().
+        AddSheet("Employees").
+        AddSection(&simpleexcel.SectionConfig{
+            Title: "All Employees",
+            Data:  data,
+            ShowHeader: true,
+        }).Build()
+
     c.Response().Header().Set(echo.HeaderContentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="large_export.xlsx"`)
+    c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="employees.xlsx"`)
     
-    // Create a pipe for streaming
-    pr, pw := io.Pipe()
-    
-    // Start streaming in a separate goroutine
-    go func() {
-        defer pw.Close()
-        
-        f := excelize.NewFile()
-        defer f.Close()
-        
-        // Create a new stream writer
-        streamWriter, err := f.NewStreamWriter("Sheet1")
-        if err != nil {
-            pw.CloseWithError(err)
-            return
-        }
-        
-        // Write headers
-        headers := []interface{}{"ID", "Name", "Email", "Department", "Salary"}
-        cell, _ := excelize.CoordinatesToCellName(1, 1)
-        streamWriter.SetRow(cell, headers)
-        
-        // Simulate streaming data in chunks
-        for i := 1; i <= 100000; i++ {
-            // Get data in chunks (e.g., from database)
-            // In real-world, replace this with your data fetching logic
-            row := []interface{}{
-                i,
-                fmt.Sprintf("Employee %d", i),
-                fmt.Sprintf("employee%d@example.com", i),
-                "Engineering",
-                rand.Intn(100000) + 50000,
-            }
-            
-            // Write row by row
-            cell, _ := excelize.CoordinatesToCellName(1, i+1)
-            if err := streamWriter.SetRow(cell, row); err != nil {
-                pw.CloseWithError(err)
-                return
-            }
-            
-            // Flush every 1000 rows
-            if i%1000 == 0 {
-                if err := streamWriter.Flush(); err != nil {
-                    pw.CloseWithError(err)
-                    return
-                }
-            }
-        }
-        
-        // Flush any remaining data
-        if err := streamWriter.Flush(); err != nil {
-            pw.CloseWithError(err)
-            return
-        }
-        
-        // Write the file to our pipe
-        if _, err := f.Write(pw); err != nil {
-            pw.CloseWithError(err)
-            return
-        }
-    }()
-    
-    // Stream the response
-    return c.Stream(http.StatusOK, "application/octet-stream", pr)
+    return exporter.ToWriter(c.Response().Writer)
 }
 ```
 
-#### Gin Framework
+### Extreme Scale: CSV Export
+
+When dealing with millions of rows where Excel's 1M row limit or memory overhead is an issue, use `ToCSV`.
 
 ```go
-func streamLargeExport(c *gin.Context) {
-    // Set headers for streaming
-    c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    c.Header("Content-Disposition", `attachment; filename="large_export.xlsx"`)
+func streamLargeCSV(c echo.Context) error {
+    data := fetchMillionsOfRows()
     
-    // Create a pipe for streaming
-    pr, pw := io.Pipe()
+    exporter := simpleexcel.NewDataExporter().
+        AddSheet("Report").
+        AddSection(&simpleexcel.SectionConfig{
+            Data: data,
+        }).Build()
+
+    c.Response().Header().Set(echo.HeaderContentType, "text/csv")
+    c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="large_report.csv"`)
     
-    go func() {
-        defer pw.Close()
-        
-        f := excelize.NewFile()
-        defer f.Close()
-        
-        // ... (same streaming logic as Echo example) ...
-        
-        // Write the file to our pipe
-        if _, err := f.Write(pw); err != nil {
-            pw.CloseWithError(err)
-            return
-        }
-    }()
-    
-    // Stream the response
-    c.Stream(func(w io.Writer) bool {
-        if _, err := io.Copy(w, pr); err != nil {
-            return false
-        }
-        return true
-    })
+    return exporter.ToCSV(c.Response().Writer)
 }
 ```
 

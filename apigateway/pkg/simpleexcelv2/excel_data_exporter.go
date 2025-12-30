@@ -3,7 +3,9 @@ package simpleexcelv2
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 
@@ -284,6 +286,96 @@ func (e *ExcelDataExporter) ToBytes() ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// ToWriter exports the Excel file directly to a writer.
+func (e *ExcelDataExporter) ToWriter(w io.Writer) error {
+	f, err := e.BuildExcel()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return f.Write(w)
+}
+
+// ToCSV exports the first sheet of data to CSV format.
+// This is significantly more memory-efficient for very large datasets as it avoids Excel overhead.
+func (e *ExcelDataExporter) ToCSV(w io.Writer) error {
+	if len(e.sheets) == 0 {
+		return fmt.Errorf("no sheets to export")
+	}
+
+	csvWriter := csv.NewWriter(w)
+	defer csvWriter.Flush()
+
+	sheet := e.sheets[0]
+	for _, sec := range sheet.sections {
+		// Perform Late Binding if needed
+		if sec.ID != "" && sec.Data == nil {
+			if data, ok := e.data[sec.ID]; ok {
+				sec.Data = data
+			}
+		}
+
+		// Get data length
+		dataLen := e.getDataLength(sec)
+		if dataLen == 0 && !sec.ShowHeader {
+			continue
+		}
+
+		// Resolve columns
+		cols := mergeColumns(sec.Data, sec.Columns)
+
+		// Title (if single title only)
+		if sec.Title != "" {
+			_ = csvWriter.Write([]string{sec.Title})
+		}
+
+		// Header
+		if sec.ShowHeader && len(cols) > 0 {
+			headerArr := make([]string, len(cols))
+			for i, col := range cols {
+				headerArr[i] = col.Header
+			}
+			if err := csvWriter.Write(headerArr); err != nil {
+				return err
+			}
+		}
+
+		// Data
+		if dataLen > 0 {
+			v := reflect.ValueOf(sec.Data)
+			if v.Kind() == reflect.Ptr {
+				v = v.Elem()
+			}
+
+			for i := 0; i < dataLen; i++ {
+				item := v.Index(i)
+				rowArr := make([]string, len(cols))
+				for j, col := range cols {
+					val := extractValue(item, col.FieldName)
+					// Apply formatter if any
+					if col.Formatter != nil {
+						val = col.Formatter(val)
+					} else if col.FormatterName != "" && e.formatters != nil {
+						if fn, ok := e.formatters[col.FormatterName]; ok {
+							val = fn(val)
+						}
+					}
+					rowArr[j] = fmt.Sprintf("%v", val)
+				}
+				if err := csvWriter.Write(rowArr); err != nil {
+					return err
+				}
+			}
+		}
+
+		// Empty line between sections
+		_ = csvWriter.Write([]string{""})
+	}
+
+	return nil
 }
 
 // =============================================================================
