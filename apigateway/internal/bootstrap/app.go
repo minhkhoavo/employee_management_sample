@@ -100,6 +100,8 @@ func (a *App) RegisterRoutes(empHandler *handler.EmployeeHandler, compHandler *h
 	compGroup.GET("/wiki/tpl", compHandler.ExportWikiTPL)
 	compGroup.GET("/wiki/idiomatic", compHandler.ExportWikiIdiomatic)
 	compGroup.GET("/wiki/stream", compHandler.ExportWikiStreaming)
+	compGroup.GET("/wiki/streaming-v2", compHandler.ExportWikiStreamingV2)
+	compGroup.GET("/wiki/streaming-multi-section", compHandler.ExportMultiSectionStreamYAML)
 }
 
 func (a *App) Run() error {

@@ -305,6 +305,48 @@ func (e *ExcelDataExporter) ToBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// StartStream initializes a streaming export session.
+// It returns a Streamer which can be used to write data incrementally.
+func (e *ExcelDataExporter) StartStream(w io.Writer) (*Streamer, error) {
+	// 1. Initialize File
+	f := excelize.NewFile()
+	streamer := &Streamer{
+		exporter:      e,
+		file:          f,
+		writer:        w,
+		streamWriters: make(map[string]*excelize.StreamWriter),
+	}
+
+	// 2. Prepare Sheets
+	for i, sb := range e.sheets {
+		sheetName := sb.name
+		if i == 0 {
+			f.SetSheetName("Sheet1", sheetName)
+		} else {
+			f.NewSheet(sheetName)
+		}
+
+		// Initialize StreamWriter for this sheet
+		sw, err := f.NewStreamWriter(sheetName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create stream writer for sheet %s: %w", sheetName, err)
+		}
+		streamer.streamWriters[sheetName] = sw
+	}
+
+	// Prepare state
+	streamer.currentSheetIndex = 0
+	streamer.currentSectionIndex = 0
+	streamer.currentRow = 1
+
+	// Initial processing (render static sections of first sheet)
+	if err := streamer.advanceToNextStreamingSection(); err != nil {
+		return nil, err
+	}
+
+	return streamer, nil
+}
+
 // ToWriter exports the Excel file directly to a writer.
 func (e *ExcelDataExporter) ToWriter(w io.Writer) error {
 	f, err := e.BuildExcel()
