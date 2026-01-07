@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 	"gopkg.in/yaml.v2"
@@ -43,6 +44,24 @@ type ExcelDataExporter struct {
 	styleCache   map[string]int
 	colNameCache map[int]string
 	fieldCache   map[fieldCacheKey]int
+	logger       Logger
+}
+
+// Logger interface for internal logging
+type Logger interface {
+	Log(format string, args ...interface{})
+}
+
+// SetLogger attaches a logger to the exporter
+func (e *ExcelDataExporter) SetLogger(l Logger) *ExcelDataExporter {
+	e.logger = l
+	return e
+}
+
+func (e *ExcelDataExporter) log(format string, args ...interface{}) {
+	if e.logger != nil {
+		e.logger.Log(format, args...)
+	}
 }
 
 // fieldCacheKey is a unique key for caching field indices.
@@ -120,6 +139,17 @@ func (c *ColumnConfig) IsLocked(sectionLocked bool) bool {
 		return *c.Locked
 	}
 	return sectionLocked
+}
+
+// GetColumn returns a pointer to the ColumnConfig with the specified FieldName.
+// Returns nil if not found.
+func (s *SectionConfig) GetColumn(fieldName string) *ColumnConfig {
+	for i := range s.Columns {
+		if s.Columns[i].FieldName == fieldName {
+			return &s.Columns[i]
+		}
+	}
+	return nil
 }
 
 // StyleTemplate defines basic styling.
@@ -241,6 +271,20 @@ func (e *ExcelDataExporter) GetSheetByIndex(index int) *SheetBuilder {
 		return nil
 	}
 	return e.sheets[index]
+}
+
+// GetSection returns a pointer to the SectionConfig with the specified ID.
+// It searches across all sheets and returns the first match.
+// Returns nil if not found.
+func (e *ExcelDataExporter) GetSection(id string) *SectionConfig {
+	for _, sheet := range e.sheets {
+		for _, sec := range sheet.sections {
+			if sec.ID == id {
+				return sec
+			}
+		}
+	}
+	return nil
 }
 
 // BuildExcel constructs an Excel file (*excelize.File) based on the exporter's configuration and data.
@@ -501,6 +545,7 @@ func (e *ExcelDataExporter) getDataLength(sec *SectionConfig) int {
 }
 
 func (e *ExcelDataExporter) renderSections(f *excelize.File, sheet string, sections []*SectionConfig) error {
+	t0 := time.Now()
 	// --- PASS 1: Layout Calculation ---
 	tempRow, tempCol := 1, 1
 	maxRowForPass1 := 1
@@ -577,7 +622,9 @@ func (e *ExcelDataExporter) renderSections(f *excelize.File, sheet string, secti
 		}
 		tempCol = sCol + colSpan
 	}
+	e.log("Pass 1 (Layout) took %v", time.Since(t0))
 
+	t1 := time.Now()
 	// --- PASS 2: Actual Rendering ---
 	maxRow := 1
 	nextColHorizontal := 1
@@ -712,7 +759,8 @@ func (e *ExcelDataExporter) renderSections(f *excelize.File, sheet string, secti
 				styleID, _ := e.createStyle(f, style)
 				f.SetCellStyle(sheet, cell, cell, styleID)
 				if col.Width > 0 {
-					colName := e.getColName(sCol + i)
+					// Use col name calculation
+					colName, _ := excelize.ColumnNumberToName(sCol + i)
 					f.SetColWidth(sheet, colName, colName, col.Width)
 				}
 			}
@@ -722,59 +770,102 @@ func (e *ExcelDataExporter) renderSections(f *excelize.File, sheet string, secti
 			currentRow++
 		}
 
-		// Pre-calculate style IDs and common values for data rendering
-		dataStyleIDs := make([]int, len(sec.Columns))
-		maxColHeight := sec.DataHeight
-
-		for j, col := range sec.Columns {
-			locked := col.IsLocked(sec.Locked)
-			var defaultDataStyle *StyleTemplate
-			if sectionType == SectionTypeHidden {
-				defaultDataStyle = &StyleTemplate{Fill: &FillTemplate{Color: "FFFF00"}}
-			}
-			style := resolveStyle(sec.DataStyle, defaultDataStyle, locked)
-			styleID, _ := e.createStyle(f, style)
-			dataStyleIDs[j] = styleID
-
-			if col.Height > maxColHeight {
-				maxColHeight = col.Height
-			}
-		}
-
-		// Render Data
-		dataLen := placement.DataLen // Use pre-calculated length
+		// --- Batch Data Rendering ---
+		dataLen := placement.DataLen
 		dataVal := reflect.ValueOf(sec.Data)
-		for i := 0; i < dataLen; i++ {
-			var item reflect.Value
-			if dataVal.Kind() == reflect.Slice && i < dataVal.Len() {
-				item = dataVal.Index(i)
-			}
+
+		if dataLen > 0 {
+			// Pre-calculate data styles for columns so we can apply them in bulk at the end
+			dataStyleIDs := make([]int, len(sec.Columns))
+			maxColHeight := sec.DataHeight
 			for j, col := range sec.Columns {
-				cell := e.getCellAddress(sCol+j, currentRow)
-				if col.CompareWith != nil {
-					formula, err := e.generateDiffFormula(col, i)
-					if err == nil {
-						f.SetCellFormula(sheet, cell, formula)
-					} else {
-						f.SetCellValue(sheet, cell, fmt.Sprintf("Error: %v", err))
-					}
-				} else if item.IsValid() {
-					val := e.extractValue(item, col.FieldName)
-					if col.Formatter != nil {
-						val = col.Formatter(val)
-					} else if col.FormatterName != "" {
-						if fmtFunc, ok := e.formatters[col.FormatterName]; ok {
-							val = fmtFunc(val)
-						}
-					}
-					f.SetCellValue(sheet, cell, val)
+				locked := col.IsLocked(sec.Locked)
+				var defaultDataStyle *StyleTemplate
+				if sectionType == SectionTypeHidden {
+					defaultDataStyle = &StyleTemplate{Fill: &FillTemplate{Color: "FFFF00"}}
 				}
-				f.SetCellStyle(sheet, cell, cell, dataStyleIDs[j])
+				style := resolveStyle(sec.DataStyle, defaultDataStyle, locked)
+				styleID, _ := e.createStyle(f, style)
+				dataStyleIDs[j] = styleID
+				if col.Height > maxColHeight {
+					maxColHeight = col.Height
+				}
 			}
-			if maxColHeight > 0 {
-				f.SetRowHeight(sheet, currentRow, maxColHeight)
+
+			// Pre-calculate column names to avoid repeated calls in row loop (though SetSheetRow handles finding cells)
+			// Actually SetSheetRow takes "A1", we just need the start cell for each row.
+
+			for i := 0; i < dataLen; i++ {
+				var item reflect.Value
+				if dataVal.Kind() == reflect.Slice && i < dataVal.Len() {
+					item = dataVal.Index(i)
+				}
+
+				// Build row values for batch write
+				rowValues := make([]interface{}, len(sec.Columns))
+
+				// Keep track of formula indices to apply later (SetSheetRow doesn't support formulas as raw strings easily)
+				// or we just write them as strings and SetSheetRow treats them as string? No, needs SetCellFormula.
+				// So we leave nil in rowValues and call SetCellFormula separately.
+				type docFormula struct {
+					ColIdx  int
+					Formula string
+				}
+				var rowFormulas []docFormula
+
+				for j, col := range sec.Columns {
+					if col.CompareWith != nil {
+						// Formula
+						formula, err := e.generateDiffFormula(col, i)
+						if err == nil {
+							rowFormulas = append(rowFormulas, docFormula{j, formula})
+						} else {
+							rowValues[j] = fmt.Sprintf("Error: %v", err)
+						}
+					} else if item.IsValid() {
+						val := e.extractValue(item, col.FieldName)
+						if col.Formatter != nil {
+							val = col.Formatter(val)
+						} else if col.FormatterName != "" {
+							if fmtFunc, ok := e.formatters[col.FormatterName]; ok {
+								val = fmtFunc(val)
+							}
+						}
+						rowValues[j] = val
+					}
+				}
+
+				// Write ROW
+				startCell := e.getCellAddress(sCol, currentRow)
+				f.SetSheetRow(sheet, startCell, &rowValues)
+
+				// Apply Formulas
+				for _, form := range rowFormulas {
+					cell := e.getCellAddress(sCol+form.ColIdx, currentRow)
+					f.SetCellFormula(sheet, cell, form.Formula)
+				}
+
+				if maxColHeight > 0 {
+					f.SetRowHeight(sheet, currentRow, maxColHeight)
+				}
+				currentRow++
 			}
-			currentRow++
+
+			// Apply Styles via Ranges (Bulk Style Application)
+			// Range is from sRow (or where data started) to currentRow-1
+			dataStartRow := placement.StartRow
+			if dataLen > 0 {
+				dataEndRow := dataStartRow + dataLen - 1
+
+				for j := 0; j < len(sec.Columns); j++ {
+					colName := e.getColName(sCol + j)
+					startCell := fmt.Sprintf("%s%d", colName, dataStartRow)
+					endCell := fmt.Sprintf("%s%d", colName, dataEndRow)
+
+					// Apply style to the whole range
+					f.SetCellStyle(sheet, startCell, endCell, dataStyleIDs[j])
+				}
+			}
 		}
 
 		// Apply AutoFilter if requested
@@ -805,6 +896,7 @@ func (e *ExcelDataExporter) renderSections(f *excelize.File, sheet string, secti
 		}
 		nextColHorizontal = sCol + len(sec.Columns)
 	}
+	e.log("Pass 2 (Rendering) took %v", time.Since(t1))
 
 	for _, r := range hiddenRows {
 		f.SetRowVisible(sheet, r, false)
