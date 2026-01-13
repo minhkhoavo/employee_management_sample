@@ -36,3 +36,7 @@ go.work.sum
 # .vscode/
 .vscode/
 apigateway/logs/
+apigateway/logs/app.log
+.gitignore
+apigateway/internal/bootstrap/app.go
+key.json

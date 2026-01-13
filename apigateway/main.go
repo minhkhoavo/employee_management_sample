@@ -9,7 +9,6 @@ import (
 
 func main() {
 	ctx := context.Background()
-
 	app := bootstrap.NewApp()
 	if err := app.Initialize(ctx); err != nil {
 		logger.ErrorLog(ctx, "Failed to initialize application: %v", err)
