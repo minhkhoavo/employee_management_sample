@@ -1,0 +1,13 @@
+{"level":"info","time":"2026-01-14T22:27:55+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-01-14T22:27:55+07:00","message":"Dumping test data to GCP Datastore..."}
+{"level":"info","time":"2026-01-14T22:27:55+07:00","message":"[Dump] Starting DumpUserToGCP"}
+{"level":"info","time":"2026-01-14T22:27:55+07:00","message":"[Dump] Creating 3 users"}
+{"level":"info","time":"2026-01-14T22:27:55+07:00","message":"[Dump] Calling PutMulti with 3 keys"}
+{"level":"info","time":"2026-01-14T22:27:56+07:00","message":"[Dump] DumpUserToGCP completed successfully!"}
+{"level":"info","time":"2026-01-14T22:27:56+07:00","message":"Dump to GCP Datastore completed successfully"}
+{"level":"info","time":"2026-01-14T22:32:29+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-01-14T22:33:48+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-01-14T22:35:40+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-01-14T22:36:03+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-01-14T22:38:57+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-01-14T22:44:26+07:00","message":"Environment variables loaded successfully"}

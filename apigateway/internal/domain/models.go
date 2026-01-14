@@ -2,6 +2,59 @@ package domain
 
 import "time"
 
+// ==================== PRODUCT MANAGEMENT ====================
+
+// Product represents the product table in SQL DB
+type Product struct {
+	ID       int64  `json:"id" db:"id"`
+	Brand    string `json:"brand" db:"brand"`
+	Revision int64  `json:"revision" db:"revision"`
+}
+
+// Feature represents the feature table in SQL DB
+type Feature struct {
+	ID        int64  `json:"id" db:"id"`
+	Brand     string `json:"brand" db:"brand"`
+	Country   string `json:"country" db:"country"`
+	Content   string `json:"content" db:"content"`
+	SubNumber int    `json:"sub_number" db:"sub_number"`
+}
+
+// ProductInfo represents the product info document in GCP Datastore ONLY
+type ProductInfo struct {
+	ID        int64  `datastore:"ID" json:"id"`
+	Brand     string `datastore:"Brand" json:"brand"`
+	Country   string `datastore:"Country" json:"country"`
+	Place     string `datastore:"Place" json:"place"`
+	Year      int    `datastore:"Year" json:"year"`
+	SubNumber int    `datastore:"SubNumber" json:"sub_number"`
+}
+
+// ProductDetailResponse response chính
+type ProductDetailResponse struct {
+	Item    ProductItemDTO     `json:"item"`
+	Details []ProductDetailDTO `json:"details"`
+}
+
+// ProductItemDTO chứa info cơ bản
+type ProductItemDTO struct {
+	ID    int64  `json:"id"`
+	Brand string `json:"brand"`
+}
+
+// ProductDetailDTO chứa merged info
+type ProductDetailDTO struct {
+	ID        int64  `json:"id"`
+	Brand     string `json:"brand"`
+	Country   string `json:"country"`
+	Place     string `json:"place"`
+	Year      int    `json:"year"`
+	SubNumber int    `json:"sub_number"`
+	Content   string `json:"content"`
+}
+
+// ==================== LEGACY MODELS ====================
+
 // Employee represents the employees table
 type Employee struct {
 	ID        int       `json:"id" db:"id"`

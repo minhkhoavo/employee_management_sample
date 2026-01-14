@@ -1,0 +1,35 @@
+### ProductMergeHandler API Endpoints with Performance Timing
+### Base URL: http://localhost:8080
+### Both endpoints print execution time to console using fmt.Printf
+
+### 1. Get all products with merged details (Sequential - In-Memory Indexing)
+### Fetches all products from SQL DB and merges them with features and product info from DataStore
+### Using sequential batch processing with in-memory indexing for optimal performance
+### - Fetch all products from SQL
+### - Build in-memory indexes for features and product info  
+### - Merge products in a single batch
+### Response: Array of ProductDetailResponse with merged data
+### Console Output: [SEQUENTIAL] Merged XXX products - Time: XXXms
+GET http://localhost:8080/products/details-merged
+Accept: application/json
+
+###
+
+### 2. Get all products with merged details (Concurrent - Fan-In/Fan-Out)
+### Fetches all products from SQL DB and merges them with features and product info from DataStore
+### Using concurrent batch processing with multiple workers (fan-in/fan-out pattern)
+### - Fetch all products from SQL
+### - Split products into batches
+### - Fan-out: Send batches to multiple workers concurrently
+### - Fan-in: Collect results from workers and merge in order
+### Response: Array of ProductDetailResponse with merged data
+### Console Output: [CONCURRENT] Merged XXX products - Time: XXXms
+GET http://localhost:8080/products/details-concurrent
+Accept: application/json
+
+### Performance Comparison Tips:
+### - Open terminal and monitor console output while making requests
+### - Compare execution time between sequential and concurrent approaches
+### - Test with different data volumes to see scalability differences
+
+

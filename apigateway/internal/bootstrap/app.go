@@ -40,12 +40,12 @@ func (a *App) Initialize(ctx context.Context) error {
 	// Set GCP credentials and project automatically
 	// Try multiple paths to find key.json
 	var keyPath string
-	
+
 	// Try 1: Current working directory
 	if _, err := os.Stat("key.json"); err == nil {
 		keyPath = "key.json"
 	}
-	
+
 	// Try 2: Executable directory
 	if keyPath == "" {
 		ex, err := os.Executable()
@@ -56,7 +56,7 @@ func (a *App) Initialize(ctx context.Context) error {
 			}
 		}
 	}
-	
+
 	// Try 3: Absolute path
 	if keyPath == "" {
 		keyPath = "d:\\Workspace\\employee_management_sample\\apigateway\\key.json"
@@ -64,14 +64,14 @@ func (a *App) Initialize(ctx context.Context) error {
 			keyPath = "" // Reset if not found
 		}
 	}
-	
+
 	if keyPath != "" {
 		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", keyPath)
 		logger.InfoLog(ctx, fmt.Sprintf("Found GCP credentials at: %s", keyPath))
 	} else {
 		logger.InfoLog(ctx, "GCP credentials file not found, will skip GCP features")
 	}
-	
+
 	os.Setenv("GCP_PROJECT_ID", "devhub-464904")
 
 	// Load environment configuration
@@ -129,27 +129,36 @@ func (a *App) Initialize(ctx context.Context) error {
 	a.GCP = gcpClient
 	gcpHandler := handler.NewGCPDemoHandler(gcpClient)
 
+	// Initialize Product Merger Handler (for product data merging)
+	productRepo := repository.NewProductRepository(db)
+	featureRepo := repository.NewFeatureRepository(db)
+
+	datastoreClient := database.NewDatastoreClient(a.DataStoreClient)
+	// batchSize: 50 (smaller for better concurrency), numWorkers: 10 (more workers)
+	productMerger := service.NewProductMerger(productRepo, featureRepo, datastoreClient, 50, 10)
+	productMergeHandler := handler.NewProductMergeHandler(productMerger)
+
 	// Register Middlewares
 	a.RegisterMiddlewares()
 
 	// Register Routes
-	a.RegisterRoutes(empHandler, compHandler, gcpHandler)
+	a.RegisterRoutes(empHandler, compHandler, gcpHandler, productMergeHandler)
 
 	// Dump test data to GCP Datastore (async, non-blocking, optional)
-	if a.DataStoreClient != nil {
-		go func() {
-			dumpCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+	// if a.DataStoreClient != nil {
+	// 	go func() {
+	// 		dumpCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// 		defer cancel()
 
-			logger.InfoLog(dumpCtx, "Dumping test data to GCP Datastore...")
-			err := DumpUserToGCP(dumpCtx, a.DataStoreClient)
-			if err != nil {
-				logger.WarnLog(dumpCtx, fmt.Sprintf("Dump to GCP Datastore failed (non-critical): %v", err))
-			} else {
-				logger.InfoLog(dumpCtx, "Dump to GCP Datastore completed successfully")
-			}
-		}()
-	}
+	// 		logger.InfoLog(dumpCtx, "Dumping test data to GCP Datastore...")
+	// 		err := DumpUserToGCP(dumpCtx, a.DataStoreClient)
+	// 		if err != nil {
+	// 			logger.WarnLog(dumpCtx, fmt.Sprintf("Dump to GCP Datastore failed (non-critical): %v", err))
+	// 		} else {
+	// 			logger.InfoLog(dumpCtx, "Dump to GCP Datastore completed successfully")
+	// 		}
+	// 	}()
+	// }
 
 	return nil
 }
@@ -198,13 +207,17 @@ func (a *App) RegisterMiddlewares() {
 	a.Echo.Use(middleware.CORS())
 }
 
-func (a *App) RegisterRoutes(empHandler *handler.EmployeeHandler, compHandler *handler.ComparisonHandler, gcpHandler *handler.GCPDemoHandler) {
+func (a *App) RegisterRoutes(empHandler *handler.EmployeeHandler, compHandler *handler.ComparisonHandler, gcpHandler *handler.GCPDemoHandler, productMergeHandler *handler.ProductMergeHandler) {
 	a.Echo.POST("/employees", empHandler.CreateHandler)
 	a.Echo.GET("/employees/:id", empHandler.GetHandler)
 	a.Echo.PUT("/employees/:id", empHandler.UpdateHandler)
 	a.Echo.DELETE("/employees/:id", empHandler.DeleteHandler)
 	a.Echo.GET("/employees", empHandler.ListHandler)
 	a.Echo.GET("/employees/:id/report", empHandler.ReportHandler)
+
+	// Product merge routes (sequential + concurrent)
+	a.Echo.GET("/products/details-merged", productMergeHandler.GetAllProductsWithDetailsMerged)
+	a.Echo.GET("/products/details-concurrent", productMergeHandler.GetAllProductsWithDetailsConcurrent)
 
 	exportGroup := a.Echo.Group("/export")
 	exportGroup.GET("/fluent", empHandler.ExportFluentConfigHandler)
