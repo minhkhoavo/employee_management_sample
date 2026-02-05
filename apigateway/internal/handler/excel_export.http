@@ -1,0 +1,90 @@
+### Excel Large Data Export API Tests
+### Base URL: http://localhost:8080
+
+### =====================================
+### 1. Export Products (200k products - default, simple)
+### =====================================
+# @name ExportDefault
+GET http://localhost:8080/api/v1/excel/products/export?sections=true
+Accept: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+### =====================================
+### 2. Export Products (custom count)
+### =====================================
+# @name ExportCustomCount
+GET http://localhost:8080/api/v1/excel/products/export?count=50000
+Accept: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+### =====================================
+### 3. Export with 3 SECTIONS (Styled + DIFF formulas)
+### Section 1: Original Data (Blue headers, editable)
+### Section 2: Readonly Copy (Green headers, locked style)
+### Section 3: DIFF comparison (Orange headers, formulas)
+### =====================================
+# @name ExportWithSections
+GET http://localhost:8080/api/v1/excel/products/export?count=1000&sections=true
+Accept: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+### =====================================
+### 4. Export 50k with 3 Sections
+### =====================================
+# @name ExportLargeWithSections
+GET http://localhost:8080/api/v1/excel/products/export?count=50000&sections=true&batch_size=5000
+Accept: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+### =====================================
+### 5. Export with custom batch size and memory limit
+### =====================================
+# @name ExportWithConfig
+GET http://localhost:8080/api/v1/excel/products/export?count=100000&batch_size=5000&max_memory_mb=1000
+Accept: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+### =====================================
+### 6. Export Progress (SSE Stream)
+### =====================================
+# @name ExportProgressSSE
+GET http://localhost:8080/api/v1/excel/products/export-progress?count=50000
+Accept: text/event-stream
+
+### =====================================
+### 7. Get Memory Stats
+### =====================================
+# @name GetMemoryStats
+GET http://localhost:8080/api/v1/excel/memory-stats
+Accept: application/json
+
+### =====================================
+### 8. Force Garbage Collection
+### =====================================
+# @name ForceGC
+POST http://localhost:8080/api/v1/excel/force-gc
+Accept: application/json
+
+### =====================================
+### USAGE NOTES
+### =====================================
+#
+# SIMPLE EXPORT (1 section):
+#   curl -o products.xlsx "http://localhost:8080/api/v1/excel/products/export"
+#
+# 3-SECTION EXPORT (with styles & DIFF):
+#   curl -o products_3sec.xlsx "http://localhost:8080/api/v1/excel/products/export?sections=true&count=1000"
+#
+# SECTIONS LAYOUT:
+#   | Section 1 (A-W)    | Section 2 (X-AT)   | Section 3 (AU-BQ)  |
+#   | Original Data      | Readonly Copy      | DIFF Comparison    |
+#   | Blue Headers       | Green Headers      | Orange Headers     |
+#   | Editable           | Locked Style       | Formulas: OK/DIFF  |
+#
+# FREEZE PANES:
+#   - Columns A-J (ID to DetailImage5) are frozen when scrolling horizontally
+#   - Row 1 (Headers) is frozen when scrolling vertically
+#
+# CONDITIONAL FORMATTING:
+#   - Section 3 cells show "✓ OK" (green) if Section1 == Section2
+#   - Section 3 cells show "✗ DIFF" (red) if values differ
+#
+# Expected Results (3-section export):
+#   - 1k products: ~200KB file, ~1 second
+#   - 50k products: ~25MB file, ~15 seconds
+#   - Memory should stay under 1.4GB

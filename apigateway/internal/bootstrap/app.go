@@ -243,6 +243,14 @@ func (a *App) RegisterRoutes(empHandler *handler.EmployeeHandler, compHandler *h
 		gcpGroup.GET("/task-lists/:id/tasks", gcpHandler.ListTasksHandler)
 		gcpGroup.GET("/tasks/complex", gcpHandler.ComplexQueryHandler)
 	}
+
+	// Excel Export API - Large Product Export (200,000+ rows with streaming)
+	excelHandler := handler.NewExcelExportHandler()
+	excelGroup := a.Echo.Group("/api/v1/excel")
+	excelGroup.GET("/products/export", excelHandler.ExportLargeProductsExcel)            // Main export endpoint
+	excelGroup.GET("/products/export-progress", excelHandler.ExportProductsWithProgress) // SSE progress
+	excelGroup.GET("/memory-stats", excelHandler.GetMemoryStats)                         // Memory monitoring
+	excelGroup.POST("/force-gc", excelHandler.ForceGC)                                   // Manual GC trigger
 }
 
 func (a *App) Run() error {

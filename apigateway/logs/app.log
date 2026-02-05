@@ -11,3 +11,51 @@
 {"level":"info","time":"2026-01-14T22:36:03+07:00","message":"Environment variables loaded successfully"}
 {"level":"info","time":"2026-01-14T22:38:57+07:00","message":"Environment variables loaded successfully"}
 {"level":"info","time":"2026-01-14T22:44:26+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-02-05T21:59:08+07:00","message":"Environment variables loaded successfully"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[excel-export-1770303564573581700] Excel Export Request Started"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[excel-export-1770303564573581700] Initial Memory: \n--- Memory Stats ---\nAlloc: 1 MB (heap objects)\nTotalAlloc: 3 MB (cumulative)\nSys: 11 MB (system memory)\nHeapAlloc: 1 MB\nHeapSys: 7 MB\nHeapIdle: 3 MB\nHeapInuse: 4 MB\nHeapReleased: 3 MB\nHeapObjects: 13492\nStackSys: 0 MB\nGCSys: 2 MB\nNumGC: 1\n-------------------"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[excel-export-1770303564573581700] Export Config: TotalProducts=200000, BatchSize=10000, MaxMemoryMB=1400, Sections=true"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[Excel Export] Starting 3-section export of 200000 products"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[Excel Export] Config: BatchSize=10000, MaxMemoryMB=1400"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"\n--- Memory Stats ---\nAlloc: 1 MB (heap objects)\nTotalAlloc: 3 MB (cumulative)\nSys: 11 MB (system memory)\nHeapAlloc: 1 MB\nHeapSys: 7 MB\nHeapIdle: 3 MB\nHeapInuse: 4 MB\nHeapReleased: 3 MB\nHeapObjects: 13538\nStackSys: 0 MB\nGCSys: 2 MB\nNumGC: 1\n-------------------"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[Excel Export] Step 1 - Create file: 1.0325ms"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[Excel Export] Step 2 - Create styles: 0s"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[Excel Export] Step 3 - Create stream writer: 416.6µs"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[Excel Export] Step 4 - Set column widths for 3 sections: 0s"}
+{"level":"info","time":"2026-02-05T21:59:24+07:00","message":"[Excel Export] Step 5 - Write headers for 3 sections: 0s"}
+{"level":"info","time":"2026-02-05T21:59:25+07:00","message":"[Excel Export] Progress: 10000/200000 (5.00%) | Batch: 995.1283ms | Rows/s: 10049 | Mem: 43 MB"}
+{"level":"info","time":"2026-02-05T21:59:26+07:00","message":"[Excel Export] Progress: 20000/200000 (10.00%) | Batch: 1.1811511s | Rows/s: 8466 | Mem: 40 MB"}
+{"level":"info","time":"2026-02-05T21:59:27+07:00","message":"[Excel Export] Progress: 30000/200000 (15.00%) | Batch: 1.2314913s | Rows/s: 8120 | Mem: 38 MB"}
+{"level":"info","time":"2026-02-05T21:59:29+07:00","message":"[Excel Export] Progress: 40000/200000 (20.00%) | Batch: 1.2136666s | Rows/s: 8239 | Mem: 35 MB"}
+{"level":"info","time":"2026-02-05T21:59:30+07:00","message":"[Excel Export] Progress: 50000/200000 (25.00%) | Batch: 1.0661412s | Rows/s: 9380 | Mem: 31 MB"}
+{"level":"info","time":"2026-02-05T21:59:30+07:00","message":"[Excel Export] Progress: 60000/200000 (30.00%) | Batch: 567.6373ms | Rows/s: 17617 | Mem: 26 MB"}
+{"level":"info","time":"2026-02-05T21:59:31+07:00","message":"[Excel Export] Progress: 70000/200000 (35.00%) | Batch: 622.7357ms | Rows/s: 16058 | Mem: 24 MB"}
+{"level":"info","time":"2026-02-05T21:59:32+07:00","message":"[Excel Export] Progress: 80000/200000 (40.00%) | Batch: 592.9034ms | Rows/s: 16866 | Mem: 41 MB"}
+{"level":"info","time":"2026-02-05T21:59:32+07:00","message":"[Excel Export] Progress: 90000/200000 (45.00%) | Batch: 589.8485ms | Rows/s: 16954 | Mem: 38 MB"}
+{"level":"info","time":"2026-02-05T21:59:33+07:00","message":"[Excel Export] Progress: 100000/200000 (50.00%) | Batch: 654.159ms | Rows/s: 15287 | Mem: 33 MB"}
+{"level":"info","time":"2026-02-05T21:59:33+07:00","message":"[Excel Export] Progress: 110000/200000 (55.00%) | Batch: 580.468ms | Rows/s: 17227 | Mem: 33 MB"}
+{"level":"info","time":"2026-02-05T21:59:34+07:00","message":"[Excel Export] Progress: 120000/200000 (60.00%) | Batch: 591.6846ms | Rows/s: 16901 | Mem: 31 MB"}
+{"level":"info","time":"2026-02-05T21:59:35+07:00","message":"[Excel Export] Progress: 130000/200000 (65.00%) | Batch: 567.1672ms | Rows/s: 17631 | Mem: 27 MB"}
+{"level":"info","time":"2026-02-05T21:59:35+07:00","message":"[Excel Export] Progress: 140000/200000 (70.00%) | Batch: 648.3406ms | Rows/s: 15424 | Mem: 38 MB"}
+{"level":"info","time":"2026-02-05T21:59:36+07:00","message":"[Excel Export] Progress: 150000/200000 (75.00%) | Batch: 656.3437ms | Rows/s: 15236 | Mem: 36 MB"}
+{"level":"info","time":"2026-02-05T21:59:36+07:00","message":"[Excel Export] Progress: 160000/200000 (80.00%) | Batch: 651.1607ms | Rows/s: 15357 | Mem: 33 MB"}
+{"level":"info","time":"2026-02-05T21:59:37+07:00","message":"[Excel Export] Progress: 170000/200000 (85.00%) | Batch: 577.0276ms | Rows/s: 17330 | Mem: 31 MB"}
+{"level":"info","time":"2026-02-05T21:59:38+07:00","message":"[Excel Export] Progress: 180000/200000 (90.00%) | Batch: 555.1595ms | Rows/s: 18013 | Mem: 30 MB"}
+{"level":"info","time":"2026-02-05T21:59:38+07:00","message":"[Excel Export] Progress: 190000/200000 (95.00%) | Batch: 587.4425ms | Rows/s: 17023 | Mem: 26 MB"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"[Excel Export] Progress: 200000/200000 (100.00%) | Batch: 577.9915ms | Rows/s: 17301 | Mem: 23 MB"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"[Excel Export] Step 6 - Generate & write 200000 rows (3 sections): 14.7176283s"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"\n--- Memory Stats ---\nAlloc: 23 MB (heap objects)\nTotalAlloc: 5588 MB (cumulative)\nSys: 73 MB (system memory)\nHeapAlloc: 23 MB\nHeapSys: 67 MB\nHeapIdle: 41 MB\nHeapInuse: 25 MB\nHeapReleased: 19 MB\nHeapObjects: 45395\nStackSys: 0 MB\nGCSys: 3 MB\nNumGC: 267\n-------------------"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"[Excel Export] Step 7 - Flush stream: 3.5968ms"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"[Excel Export] Step 8 - Set freeze panes: 0s"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"[Excel Export] Step 9 - Set conditional formatting: 0s"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"[Excel Export] Step 10 - Section 2 visual protection applied: 0s"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"[Excel Export] Post-flush GC complete"}
+{"level":"info","time":"2026-02-05T21:59:39+07:00","message":"\n--- Memory Stats ---\nAlloc: 21 MB (heap objects)\nTotalAlloc: 5588 MB (cumulative)\nSys: 73 MB (system memory)\nHeapAlloc: 21 MB\nHeapSys: 67 MB\nHeapIdle: 43 MB\nHeapInuse: 24 MB\nHeapReleased: 19 MB\nHeapObjects: 12786\nStackSys: 0 MB\nGCSys: 3 MB\nNumGC: 268\n-------------------"}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"[Excel Export] Step 11 - Write to output: 12.4826805s"}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"\n=== Excel Export Summary ===\nTotal Rows: 200000\nProcessed Rows: 200000\nProgress: 100.00%\nTotal Time: 27.2099578s\nRows/Second: 7350.25\nPeak Memory: 43 MB\nCurrent Memory: 23 MB\nFlush Count: 1\nGC Count: 1\nAverage Batch Time: 735.382415ms\n============================="}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"\n--- Memory Stats ---\nAlloc: 23 MB (heap objects)\nTotalAlloc: 5590 MB (cumulative)\nSys: 73 MB (system memory)\nHeapAlloc: 23 MB\nHeapSys: 67 MB\nHeapIdle: 41 MB\nHeapInuse: 25 MB\nHeapReleased: 39 MB\nHeapObjects: 27112\nStackSys: 0 MB\nGCSys: 3 MB\nNumGC: 268\n-------------------"}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"[excel-export-1770303564573581700] Excel Export Completed Successfully"}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"[excel-export-1770303564573581700] Total Time: 27.3030453s"}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"[excel-export-1770303564573581700] Rows Written: 200000"}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"[excel-export-1770303564573581700] Peak Memory: 43 MB"}
+{"level":"info","time":"2026-02-05T21:59:51+07:00","message":"[excel-export-1770303564573581700] Final Memory: \n--- Memory Stats ---\nAlloc: 23 MB (heap objects)\nTotalAlloc: 5590 MB (cumulative)\nSys: 73 MB (system memory)\nHeapAlloc: 23 MB\nHeapSys: 67 MB\nHeapIdle: 41 MB\nHeapInuse: 25 MB\nHeapReleased: 39 MB\nHeapObjects: 27135\nStackSys: 0 MB\nGCSys: 3 MB\nNumGC: 268\n-------------------"}
