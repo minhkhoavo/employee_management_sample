@@ -71,14 +71,23 @@ Accept: application/json
 #   curl -o products_3sec.xlsx "http://localhost:8080/api/v1/excel/products/export?sections=true&count=1000"
 #
 # SECTIONS LAYOUT:
+#   | Row 1: Title Banner (merged cells, different colors per section)     |
+#   | Row 2: Headers (with AutoFilter dropdowns on Section 1 & 2)         |
+#   | Row 3+: Data                                                        |
+#
 #   | Section 1 (A-W)    | Section 2 (X-AT)   | Section 3 (AU-BQ)  |
 #   | Original Data      | Readonly Copy      | DIFF Comparison    |
+#   | Dark Blue Banner   | Dark Green Banner  | Dark Orange Banner |
 #   | Blue Headers       | Green Headers      | Orange Headers     |
 #   | Editable           | Locked Style       | Formulas: OK/DIFF  |
 #
 # FREEZE PANES:
-#   - Columns A-J (ID to DetailImage5) are frozen when scrolling horizontally
-#   - Row 1 (Headers) is frozen when scrolling vertically
+#   - Columns A-E (first 5 columns) are frozen when scrolling horizontally
+#   - Rows 1-2 (Title + Headers) are frozen when scrolling vertically
+#
+# AUTOFILTER:
+#   - Filter dropdowns on Section 1 & Section 2 header columns (Row 2)
+#   - Section 3 (DIFF) does not have filter
 #
 # CONDITIONAL FORMATTING:
 #   - Section 3 cells show "✓ OK" (green) if Section1 == Section2

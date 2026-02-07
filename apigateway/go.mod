@@ -4,7 +4,6 @@ go 1.24.0
 
 require (
 	cloud.google.com/go/datastore v1.21.0
-	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.4.0
 	github.com/labstack/echo/v4 v4.6.1
 	github.com/lib/pq v1.10.9

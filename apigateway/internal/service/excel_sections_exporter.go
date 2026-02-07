@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,16 +13,22 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// Section column counts
+// Section column constants
 const (
-	NumColumns       = 23 // Total columns per section (ID + Name + 8 Images + 13 Metadata)
-	Section1StartCol = 1  // Column A
-	Section2StartCol = 24 // Column X (after Section 1)
-	Section3StartCol = 47 // Column AU (after Section 2)
+	NumColumns             = 23 // Total columns per section (ID + Name + 8 Images + 13 Metadata)
+	Section1StartCol       = 1  // Column A
+	Section2StartCol       = 24 // Column X (after Section 1)
+	Section3StartCol       = 47 // Column AU (after Section 2)
+	ReleaseDateColumnIndex = 22 // 0-based index of release_date column (last metadata field)
 )
 
 // ExcelStyles holds all style IDs for the export
 type ExcelStyles struct {
+	// Title banner styles
+	TitleSection1 int // Dark Blue banner for Section 1
+	TitleSection2 int // Dark Green banner for Section 2
+	TitleSection3 int // Dark Orange banner for Section 3
+
 	// Header styles
 	HeaderSection1  int // Blue for Section 1 headers
 	HeaderSection2  int // Green for Section 2 headers (readonly)
@@ -29,8 +36,9 @@ type ExcelStyles struct {
 	HeaderImageCols int // Purple for image column headers
 
 	// Data styles
-	DataDefault   int // Default data style
+	DataDefault   int // Default data style (unlocked for Section 1)
 	DataLocked    int // Locked cells for Section 2
+	DataSection3  int // Locked cells for Section 3 (DIFF formulas)
 	DataDiffMatch int // Green background when values match
 	DataDiffError int // Red background when values differ
 }
@@ -39,6 +47,54 @@ type ExcelStyles struct {
 func createExcelStyles(f *excelize.File) (*ExcelStyles, error) {
 	styles := &ExcelStyles{}
 	var err error
+
+	// Title Section 1 - Dark Blue banner
+	styles.TitleSection1, err = f.NewStyle(&excelize.Style{
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"1F4E79"}, Pattern: 1},
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF", Size: 14},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 2},
+			{Type: "right", Color: "000000", Style: 2},
+			{Type: "top", Color: "000000", Style: 2},
+			{Type: "bottom", Color: "000000", Style: 2},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TitleSection1 style: %w", err)
+	}
+
+	// Title Section 2 - Dark Green banner
+	styles.TitleSection2, err = f.NewStyle(&excelize.Style{
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"385723"}, Pattern: 1},
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF", Size: 14},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 2},
+			{Type: "right", Color: "000000", Style: 2},
+			{Type: "top", Color: "000000", Style: 2},
+			{Type: "bottom", Color: "000000", Style: 2},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TitleSection2 style: %w", err)
+	}
+
+	// Title Section 3 - Dark Orange banner
+	styles.TitleSection3, err = f.NewStyle(&excelize.Style{
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"843C0C"}, Pattern: 1},
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF", Size: 14},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 2},
+			{Type: "right", Color: "000000", Style: 2},
+			{Type: "top", Color: "000000", Style: 2},
+			{Type: "bottom", Color: "000000", Style: 2},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TitleSection3 style: %w", err)
+	}
 
 	// Header Section 1 - Blue background, white bold text
 	styles.HeaderSection1, err = f.NewStyle(&excelize.Style{
@@ -152,7 +208,7 @@ func createExcelStyles(f *excelize.File) (*ExcelStyles, error) {
 		return nil, fmt.Errorf("failed to create HeaderImageCols style: %w", err)
 	}
 
-	// Default data style
+	// Default data style (Unlocked - editable for Section 1)
 	styles.DataDefault, err = f.NewStyle(&excelize.Style{
 		Alignment: &excelize.Alignment{
 			Vertical: "center",
@@ -164,12 +220,15 @@ func createExcelStyles(f *excelize.File) (*ExcelStyles, error) {
 			{Type: "top", Color: "D9D9D9", Style: 1},
 			{Type: "bottom", Color: "D9D9D9", Style: 1},
 		},
+		Protection: &excelize.Protection{
+			Locked: false, // Explicitly unlocked for editing
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DataDefault style: %w", err)
 	}
 
-	// Locked data style (for Section 2)
+	// Locked data style (for Section 2 - green background)
 	styles.DataLocked, err = f.NewStyle(&excelize.Style{
 		Fill: excelize.Fill{
 			Type:    "pattern",
@@ -192,6 +251,32 @@ func createExcelStyles(f *excelize.File) (*ExcelStyles, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DataLocked style: %w", err)
+	}
+
+	// Section 3 style - locked for DIFF formulas (light gray background)
+	styles.DataSection3, err = f.NewStyle(&excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"F2F2F2"}, // Light gray
+			Pattern: 1,
+		},
+		Alignment: &excelize.Alignment{
+			Horizontal: "center",
+			Vertical:   "center",
+			WrapText:   false,
+		},
+		Border: []excelize.Border{
+			{Type: "left", Color: "D9D9D9", Style: 1},
+			{Type: "right", Color: "D9D9D9", Style: 1},
+			{Type: "top", Color: "D9D9D9", Style: 1},
+			{Type: "bottom", Color: "D9D9D9", Style: 1},
+		},
+		Protection: &excelize.Protection{
+			Locked: true, // Lock formula cells
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DataSection3 style: %w", err)
 	}
 
 	// Diff Match style - Light green
@@ -356,18 +441,80 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 		logger.InfoLog(ctx, "[Excel Export] Step 4 - Set column widths for 3 sections: %v", time.Since(stepStart))
 	}
 
-	// Step 5: Write header rows for all 3 sections
+	// Step 5: Write title (Row 1) and header rows (Row 2) for all 3 sections
 	stepStart = time.Now()
 	headers := domain.GetExcelHeaders()
-
-	// Build complete header row for all 3 sections
 	totalCols := NumColumns * 3
+
+	// --- Row 1: Title/Banner row (merged cells per section) ---
+	titleRow := make([]interface{}, totalCols)
+
+	// Section 1 title cells
+	for j := 0; j < NumColumns; j++ {
+		text := ""
+		if j == 0 {
+			text = "📊 SECTION 1 - ORIGINAL DATA"
+		}
+		titleRow[j] = excelize.Cell{
+			Value:   text,
+			StyleID: styles.TitleSection1,
+		}
+	}
+	// Section 2 title cells
+	for j := 0; j < NumColumns; j++ {
+		text := ""
+		if j == 0 {
+			text = "🔒 SECTION 2 - READONLY COPY"
+		}
+		titleRow[NumColumns+j] = excelize.Cell{
+			Value:   text,
+			StyleID: styles.TitleSection2,
+		}
+	}
+	// Section 3 title cells
+	for j := 0; j < NumColumns; j++ {
+		text := ""
+		if j == 0 {
+			text = "⚡ SECTION 3 - DIFF COMPARISON"
+		}
+		titleRow[NumColumns*2+j] = excelize.Cell{
+			Value:   text,
+			StyleID: styles.TitleSection3,
+		}
+	}
+
+	if err := sw.SetRow("A1", titleRow, excelize.RowOpts{Height: 30}); err != nil {
+		return fmt.Errorf("failed to write title row: %w", err)
+	}
+
+	// Merge cells for title row
+	titleSec1End, _ := excelize.CoordinatesToCellName(NumColumns, 1)
+	if err := sw.MergeCell("A1", titleSec1End); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not merge Section 1 title: %v", err)
+	}
+
+	titleSec2Start, _ := excelize.CoordinatesToCellName(Section2StartCol, 1)
+	titleSec2End, _ := excelize.CoordinatesToCellName(Section2StartCol+NumColumns-1, 1)
+	if err := sw.MergeCell(titleSec2Start, titleSec2End); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not merge Section 2 title: %v", err)
+	}
+
+	titleSec3Start, _ := excelize.CoordinatesToCellName(Section3StartCol, 1)
+	titleSec3End, _ := excelize.CoordinatesToCellName(Section3StartCol+NumColumns-1, 1)
+	if err := sw.MergeCell(titleSec3Start, titleSec3End); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not merge Section 3 title: %v", err)
+	}
+
+	if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 5a - Write title banner row with merged cells: %v", time.Since(stepStart))
+	}
+
+	// --- Row 2: Header row (with filter support) ---
 	headerRow := make([]interface{}, totalCols)
 
-	// Section 1 headers (with styles)
+	// Section 1 headers
 	for i, h := range headers {
 		style := styles.HeaderSection1
-		// Image columns (index 2-9) get purple style
 		if i >= 2 && i <= 9 {
 			style = styles.HeaderImageCols
 		}
@@ -384,7 +531,7 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 			style = styles.HeaderImageCols
 		}
 		headerRow[NumColumns+i] = excelize.Cell{
-			Value:   "[RO] " + h, // ReadOnly prefix
+			Value:   "[RO] " + h,
 			StyleID: style,
 		}
 	}
@@ -392,24 +539,24 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 	// Section 3 headers (DIFF prefix)
 	for i, h := range headers {
 		headerRow[NumColumns*2+i] = excelize.Cell{
-			Value:   "Δ " + h, // Delta symbol for diff
+			Value:   "Δ " + h,
 			StyleID: styles.HeaderSection3,
 		}
 	}
 
-	if err := sw.SetRow("A1", headerRow); err != nil {
+	if err := sw.SetRow("A2", headerRow); err != nil {
 		return fmt.Errorf("failed to write header row: %w", err)
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 5 - Write headers for 3 sections: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 5b - Write headers for 3 sections: %v", time.Since(stepStart))
 	}
 
 	// Step 6: Generate and write data rows
 	stepStart = time.Now()
 	generator := NewProductDataGenerator(42)
 
-	rowNum := 2
+	rowNum := 3 // Row 1 = Title, Row 2 = Headers, Data starts at Row 3
 	batchStart := time.Now()
 
 	for i := 0; i < e.config.TotalProducts; i++ {
@@ -425,11 +572,16 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 		// Build complete row for all 3 sections
 		fullRow := make([]interface{}, totalCols)
 
-		// Section 1: Original data (editable)
+		// Section 1: Original data (editable, except release_date column)
 		for j, val := range productData {
+			style := styles.DataDefault
+			// Make release_date column (index 22) locked/disabled
+			if j == ReleaseDateColumnIndex {
+				style = styles.DataLocked
+			}
 			fullRow[j] = excelize.Cell{
 				Value:   val,
-				StyleID: styles.DataDefault,
+				StyleID: style,
 			}
 		}
 
@@ -441,7 +593,7 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 			}
 		}
 
-		// Section 3: DIFF formulas comparing Section 1 and Section 2
+		// Section 3: DIFF formulas comparing Section 1 and Section 2 (locked)
 		for j := 0; j < NumColumns; j++ {
 			// Get cell references for Section 1 and Section 2
 			sec1Cell, _ := excelize.CoordinatesToCellName(j+1, rowNum)
@@ -452,7 +604,7 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 
 			fullRow[NumColumns*2+j] = excelize.Cell{
 				Formula: formula,
-				StyleID: styles.DataDefault,
+				StyleID: styles.DataSection3, // Locked style to protect formulas
 			}
 		}
 
@@ -519,85 +671,15 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 		logger.InfoLog(ctx, "[Excel Export] Step 7 - Flush stream: %v", time.Since(stepStart))
 	}
 
-	// Step 8: Set freeze panes (freeze first 10 columns - ID to DetailImage5)
+	// Step 8: Save lastRow for later use in normal mode
 	stepStart = time.Now()
-	if err := f.SetPanes(sheetName, &excelize.Panes{
-		Freeze:      true,
-		Split:       false,
-		XSplit:      10, // Freeze columns A-J (ID to DetailImage5)
-		YSplit:      1,  // Freeze header row
-		TopLeftCell: "K2",
-		ActivePane:  "bottomRight",
-	}); err != nil {
-		logger.WarnLog(ctx, "[Excel Export] Could not set freeze panes: %v", err)
-	}
+	lastRow := e.config.TotalProducts + 2 // +2 because Row1=Title, Row2=Headers, data starts Row3
+
+	// NOTE: SetPanes, AutoFilter, ConditionalFormat, ProtectSheet cannot be applied
+	// after StreamWriter on the same sheet. They will be applied after reopening the file.
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 8 - Set freeze panes: %v", time.Since(stepStart))
-	}
-
-	// Step 9: Add conditional formatting for Section 3 (DIFF column)
-	stepStart = time.Now()
-	lastRow := e.config.TotalProducts + 1
-
-	// Range for Section 3
-	sec3StartCell, _ := excelize.CoordinatesToCellName(Section3StartCol, 2)
-	sec3EndCell, _ := excelize.CoordinatesToCellName(Section3StartCol+NumColumns-1, lastRow)
-	sec3Range := fmt.Sprintf("%s:%s", sec3StartCell, sec3EndCell)
-
-	// Green for "OK"
-	greenFormat, _ := f.NewConditionalStyle(&excelize.Style{
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"C6EFCE"},
-			Pattern: 1,
-		},
-		Font: &excelize.Font{
-			Color: "006100",
-		},
-	})
-
-	// Red for "DIFF"
-	redFormat, _ := f.NewConditionalStyle(&excelize.Style{
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"FFC7CE"},
-			Pattern: 1,
-		},
-		Font: &excelize.Font{
-			Color: "9C0006",
-			Bold:  true,
-		},
-	})
-
-	if err := f.SetConditionalFormat(sheetName, sec3Range, []excelize.ConditionalFormatOptions{
-		{
-			Type:     "cell",
-			Criteria: "containing",
-			Format:   greenFormat,
-			Value:    `"OK"`,
-		},
-		{
-			Type:     "cell",
-			Criteria: "containing",
-			Format:   redFormat,
-			Value:    `"DIFF"`,
-		},
-	}); err != nil {
-		logger.WarnLog(ctx, "[Excel Export] Could not set conditional formatting: %v", err)
-	}
-
-	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 9 - Set conditional formatting: %v", time.Since(stepStart))
-	}
-
-	// Step 10: Protect Section 2 columns (make readonly)
-	stepStart = time.Now()
-	// Note: Full protection requires sheet protection, but we're using visual styling
-	// to indicate readonly. Full protection would prevent all edits.
-
-	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 10 - Section 2 visual protection applied: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 8 - StreamWriter phase complete, preparing for normal mode operations")
 	}
 
 	// Force GC before final write
@@ -609,14 +691,108 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 		logger.InfoLog(ctx, "%s", GetDetailedMemoryStats())
 	}
 
-	// Step 11: Write to output
+	// Step 9: Write to temp buffer first (StreamWriter mode complete)
 	stepStart = time.Now()
-	if _, err := f.WriteTo(writer); err != nil {
-		return fmt.Errorf("failed to write to output: %w", err)
+	var tempBuffer bytes.Buffer
+	if _, err := f.WriteTo(&tempBuffer); err != nil {
+		return fmt.Errorf("failed to write to temp buffer: %w", err)
+	}
+
+	// Close the original file
+	if err := f.Close(); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Error closing stream file: %v", err)
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 11 - Write to output: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 11 - Write to temp buffer: %v (size: %d bytes)", time.Since(stepStart), tempBuffer.Len())
+	}
+
+	// Step 12: Re-open file in normal mode to apply AutoFilter and Protection
+	stepStart = time.Now()
+	f2, err := excelize.OpenReader(&tempBuffer)
+	if err != nil {
+		return fmt.Errorf("failed to reopen file for AutoFilter/Protection: %w", err)
+	}
+	defer func() {
+		if err := f2.Close(); err != nil {
+			logger.ErrorLog(ctx, "[Excel Export] Error closing final file: %v", err)
+		}
+	}()
+
+	// Get actual sheet name from reopened file (should be first/active sheet)
+	sheets := f2.GetSheetList()
+	if len(sheets) == 0 {
+		return fmt.Errorf("no sheets found in reopened file")
+	}
+	actualSheetName := sheets[0] // Use first sheet
+
+	if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 10 - Reopened file in normal mode (sheet: %s): %v", actualSheetName, time.Since(stepStart))
+	}
+
+	// Step 11: Set freeze panes (5 columns + 2 rows)
+	stepStart = time.Now()
+	if err := f2.SetPanes(actualSheetName, &excelize.Panes{
+		Freeze:      true,
+		Split:       false,
+		XSplit:      5, // Freeze columns A-E (first 5 columns)
+		YSplit:      2, // Freeze title row (row 1) + header row (row 2)
+		TopLeftCell: "F3",
+		ActivePane:  "bottomRight",
+	}); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not set freeze panes: %v", err)
+	} else if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 11 - Freeze panes set (5 cols, 2 rows): %v", time.Since(stepStart))
+	}
+
+	// Step 12: Apply AutoFilter on Section 1 and Section 2 (Row 2 headers)
+	stepStart = time.Now()
+	filterEndCell, _ := excelize.CoordinatesToCellName(Section2StartCol+NumColumns-1, lastRow)
+	filterRange := fmt.Sprintf("A2:%s", filterEndCell)
+	if err := f2.AutoFilter(actualSheetName, filterRange, []excelize.AutoFilterOptions{}); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not set AutoFilter: %v", err)
+	} else if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 12 - AutoFilter applied: %s (%v)", filterRange, time.Since(stepStart))
+	}
+
+	// Step 13: Protect Sheet for Section 2 and Section 3 (locked cells)
+	// NOTE: Conditional formatting for DIFF columns is skipped due to Excel compatibility issues
+	// The DIFF formulas themselves show OK/DIFF text which is sufficient for user feedback
+
+	// Step 13: Protect Sheet for Section 2 and Section 3 (locked cells)
+	stepStart = time.Now()
+	if err := f2.ProtectSheet(actualSheetName, &excelize.SheetProtectionOptions{
+		AlgorithmName:       "SHA-512",
+		Password:            "",   // No password required to unprotect
+		AutoFilter:          true, // Allow using AutoFilter
+		SelectLockedCells:   true, // Allow selecting locked cells
+		SelectUnlockedCells: true, // Allow selecting unlocked cells
+		Sort:                true, // Allow sorting
+		FormatCells:         false,
+		FormatColumns:       false,
+		FormatRows:          false,
+		InsertColumns:       false,
+		InsertRows:          false,
+		InsertHyperlinks:    false,
+		DeleteColumns:       false,
+		DeleteRows:          false,
+		EditScenarios:       false,
+		EditObjects:         false,
+		PivotTables:         false,
+	}); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not protect sheet: %v", err)
+	} else if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 13 - Sheet protection enabled: %v", time.Since(stepStart))
+	}
+
+	// Step 14: Write final output
+	stepStart = time.Now()
+	if _, err := f2.WriteTo(writer); err != nil {
+		return fmt.Errorf("failed to write final output: %w", err)
+	}
+
+	if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 14 - Write final output: %v", time.Since(stepStart))
 	}
 
 	e.stats.EndTime = time.Now()
