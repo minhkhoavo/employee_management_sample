@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -384,16 +383,88 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 		logger.WarnLog(ctx, "[Excel Export] Could not delete Sheet1: %v", err)
 	}
 
+	if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 3 - Setup sheet: %v", time.Since(stepStart))
+	}
+
+	// Step 4: Apply AutoFilter and ProtectSheet BEFORE creating StreamWriter
+	// CRITICAL: These must be set before StreamWriter because Flush() overwrites sheet XML
+	// and only preserves elements that were already in the sheet's XML structure.
+	stepStart = time.Now()
+	lastRow := e.config.TotalProducts + 2 // +2 because Row1=Title, Row2=Headers, data starts Row3
+
+	// AutoFilter covering Section 1 headers (Row 2)
+	// NOTE: Excel only supports ONE AutoFilter per sheet
+	sec1EndCell, _ := excelize.CoordinatesToCellName(NumColumns, lastRow)
+	sec1FilterRange := fmt.Sprintf("A2:%s", sec1EndCell)
+	if err := f.AutoFilter(sheetName, sec1FilterRange, nil); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not set AutoFilter: %v", err)
+	} else if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 4a - AutoFilter set: %s", sec1FilterRange)
+	}
+
+	// Protect Sheet - works with cell-level Protection styles (Locked: true/false)
+	// - Section 1 cells (except release_date): Unlocked (editable)
+	// - Section 1 release_date column: Locked (not editable)
+	// - Section 2 all cells: Locked (readonly)
+	// - Section 3 all cells: Locked (formulas protected)
+	if err := f.ProtectSheet(sheetName, &excelize.SheetProtectionOptions{
+		AlgorithmName:       "SHA-512",
+		Password:            "",   // No password required to unprotect
+		AutoFilter:          true, // Allow using AutoFilter
+		SelectLockedCells:   true, // Allow selecting locked cells
+		SelectUnlockedCells: true, // Allow selecting unlocked cells
+		Sort:                true, // Allow sorting
+		FormatCells:         false,
+		FormatColumns:       false,
+		FormatRows:          false,
+		InsertColumns:       false,
+		InsertRows:          false,
+		InsertHyperlinks:    false,
+		DeleteColumns:       false,
+		DeleteRows:          false,
+		EditScenarios:       false,
+		EditObjects:         false,
+		PivotTables:         false,
+	}); err != nil {
+		logger.WarnLog(ctx, "[Excel Export] Could not protect sheet: %v", err)
+	} else if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 4b - Sheet protection enabled")
+	}
+
+	if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 4 - AutoFilter + ProtectSheet set BEFORE stream: %v", time.Since(stepStart))
+	}
+
+	// Step 5: Create StreamWriter
+	stepStart = time.Now()
 	sw, err := f.NewStreamWriter(sheetName)
 	if err != nil {
 		return fmt.Errorf("failed to create stream writer: %w", err)
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 3 - Create stream writer: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 5 - Create stream writer: %v", time.Since(stepStart))
 	}
 
-	// Step 4: Set column widths for all 3 sections
+	// Step 6: Set freeze panes BEFORE any SetRow (StreamWriter requirement)
+	stepStart = time.Now()
+	if err := sw.SetPanes(&excelize.Panes{
+		Freeze:      true,
+		Split:       false,
+		XSplit:      5, // Freeze columns A-E (first 5 columns)
+		YSplit:      2, // Freeze title row (row 1) + header row (row 2)
+		TopLeftCell: "F3",
+		ActivePane:  "bottomRight",
+	}); err != nil {
+		return fmt.Errorf("failed to set freeze panes: %w", err)
+	}
+
+	if e.config.EnableLogging {
+		logger.InfoLog(ctx, "[Excel Export] Step 6 - Set freeze panes (5 cols, 2 rows): %v", time.Since(stepStart))
+	}
+
+	// Step 7: Set column widths for all 3 sections (BEFORE SetRow)
 	stepStart = time.Now()
 	baseColumnWidths := []float64{
 		15, // ID
@@ -438,10 +509,10 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 4 - Set column widths for 3 sections: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 7 - Set column widths for 3 sections: %v", time.Since(stepStart))
 	}
 
-	// Step 5: Write title (Row 1) and header rows (Row 2) for all 3 sections
+	// Step 8: Write title (Row 1) and header rows (Row 2) for all 3 sections
 	stepStart = time.Now()
 	headers := domain.GetExcelHeaders()
 	totalCols := NumColumns * 3
@@ -506,7 +577,7 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 5a - Write title banner row with merged cells: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 8a - Write title banner row with merged cells: %v", time.Since(stepStart))
 	}
 
 	// --- Row 2: Header row (with filter support) ---
@@ -549,10 +620,10 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 5b - Write headers for 3 sections: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 8b - Write headers for 3 sections: %v", time.Since(stepStart))
 	}
 
-	// Step 6: Generate and write data rows
+	// Step 9: Generate and write data rows
 	stepStart = time.Now()
 	generator := NewProductDataGenerator(42)
 
@@ -655,12 +726,12 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 6 - Generate & write %d rows (3 sections): %v",
+		logger.InfoLog(ctx, "[Excel Export] Step 9 - Generate & write %d rows (3 sections): %v",
 			e.config.TotalProducts, time.Since(stepStart))
 		logger.InfoLog(ctx, "%s", GetDetailedMemoryStats())
 	}
 
-	// Step 7: Flush stream writer
+	// Step 10: Flush stream writer
 	stepStart = time.Now()
 	if err := sw.Flush(); err != nil {
 		return fmt.Errorf("failed to flush stream writer: %w", err)
@@ -668,18 +739,7 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 	e.stats.FlushCount++
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 7 - Flush stream: %v", time.Since(stepStart))
-	}
-
-	// Step 8: Save lastRow for later use in normal mode
-	stepStart = time.Now()
-	lastRow := e.config.TotalProducts + 2 // +2 because Row1=Title, Row2=Headers, data starts Row3
-
-	// NOTE: SetPanes, AutoFilter, ConditionalFormat, ProtectSheet cannot be applied
-	// after StreamWriter on the same sheet. They will be applied after reopening the file.
-
-	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 8 - StreamWriter phase complete, preparing for normal mode operations")
+		logger.InfoLog(ctx, "[Excel Export] Step 10 - Flush stream: %v", time.Since(stepStart))
 	}
 
 	// Force GC before final write
@@ -687,112 +747,18 @@ func (e *ExcelStreamingExporter) ExportToWriterWithSections(ctx context.Context,
 	e.stats.GCCount++
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Post-flush GC complete")
+		logger.InfoLog(ctx, "[Excel Export] Pre-write GC complete")
 		logger.InfoLog(ctx, "%s", GetDetailedMemoryStats())
 	}
 
-	// Step 9: Write to temp buffer first (StreamWriter mode complete)
+	// Step 11: Write final output directly (single write, no temp buffer needed!)
 	stepStart = time.Now()
-	var tempBuffer bytes.Buffer
-	if _, err := f.WriteTo(&tempBuffer); err != nil {
-		return fmt.Errorf("failed to write to temp buffer: %w", err)
-	}
-
-	// Close the original file
-	if err := f.Close(); err != nil {
-		logger.WarnLog(ctx, "[Excel Export] Error closing stream file: %v", err)
-	}
-
-	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 11 - Write to temp buffer: %v (size: %d bytes)", time.Since(stepStart), tempBuffer.Len())
-	}
-
-	// Step 12: Re-open file in normal mode to apply AutoFilter and Protection
-	stepStart = time.Now()
-	f2, err := excelize.OpenReader(&tempBuffer)
-	if err != nil {
-		return fmt.Errorf("failed to reopen file for AutoFilter/Protection: %w", err)
-	}
-	defer func() {
-		if err := f2.Close(); err != nil {
-			logger.ErrorLog(ctx, "[Excel Export] Error closing final file: %v", err)
-		}
-	}()
-
-	// Get actual sheet name from reopened file (should be first/active sheet)
-	sheets := f2.GetSheetList()
-	if len(sheets) == 0 {
-		return fmt.Errorf("no sheets found in reopened file")
-	}
-	actualSheetName := sheets[0] // Use first sheet
-
-	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 10 - Reopened file in normal mode (sheet: %s): %v", actualSheetName, time.Since(stepStart))
-	}
-
-	// Step 11: Set freeze panes (5 columns + 2 rows)
-	stepStart = time.Now()
-	if err := f2.SetPanes(actualSheetName, &excelize.Panes{
-		Freeze:      true,
-		Split:       false,
-		XSplit:      5, // Freeze columns A-E (first 5 columns)
-		YSplit:      2, // Freeze title row (row 1) + header row (row 2)
-		TopLeftCell: "F3",
-		ActivePane:  "bottomRight",
-	}); err != nil {
-		logger.WarnLog(ctx, "[Excel Export] Could not set freeze panes: %v", err)
-	} else if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 11 - Freeze panes set (5 cols, 2 rows): %v", time.Since(stepStart))
-	}
-
-	// Step 12: Apply AutoFilter on Section 1 and Section 2 (Row 2 headers)
-	stepStart = time.Now()
-	filterEndCell, _ := excelize.CoordinatesToCellName(Section2StartCol+NumColumns-1, lastRow)
-	filterRange := fmt.Sprintf("A2:%s", filterEndCell)
-	if err := f2.AutoFilter(actualSheetName, filterRange, []excelize.AutoFilterOptions{}); err != nil {
-		logger.WarnLog(ctx, "[Excel Export] Could not set AutoFilter: %v", err)
-	} else if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 12 - AutoFilter applied: %s (%v)", filterRange, time.Since(stepStart))
-	}
-
-	// Step 13: Protect Sheet for Section 2 and Section 3 (locked cells)
-	// NOTE: Conditional formatting for DIFF columns is skipped due to Excel compatibility issues
-	// The DIFF formulas themselves show OK/DIFF text which is sufficient for user feedback
-
-	// Step 13: Protect Sheet for Section 2 and Section 3 (locked cells)
-	stepStart = time.Now()
-	if err := f2.ProtectSheet(actualSheetName, &excelize.SheetProtectionOptions{
-		AlgorithmName:       "SHA-512",
-		Password:            "",   // No password required to unprotect
-		AutoFilter:          true, // Allow using AutoFilter
-		SelectLockedCells:   true, // Allow selecting locked cells
-		SelectUnlockedCells: true, // Allow selecting unlocked cells
-		Sort:                true, // Allow sorting
-		FormatCells:         false,
-		FormatColumns:       false,
-		FormatRows:          false,
-		InsertColumns:       false,
-		InsertRows:          false,
-		InsertHyperlinks:    false,
-		DeleteColumns:       false,
-		DeleteRows:          false,
-		EditScenarios:       false,
-		EditObjects:         false,
-		PivotTables:         false,
-	}); err != nil {
-		logger.WarnLog(ctx, "[Excel Export] Could not protect sheet: %v", err)
-	} else if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 13 - Sheet protection enabled: %v", time.Since(stepStart))
-	}
-
-	// Step 14: Write final output
-	stepStart = time.Now()
-	if _, err := f2.WriteTo(writer); err != nil {
+	if _, err := f.WriteTo(writer); err != nil {
 		return fmt.Errorf("failed to write final output: %w", err)
 	}
 
 	if e.config.EnableLogging {
-		logger.InfoLog(ctx, "[Excel Export] Step 14 - Write final output: %v", time.Since(stepStart))
+		logger.InfoLog(ctx, "[Excel Export] Step 11 - Write final output: %v", time.Since(stepStart))
 	}
 
 	e.stats.EndTime = time.Now()
